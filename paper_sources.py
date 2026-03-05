@@ -145,7 +145,7 @@ def fetch_crossref(client: httpx.Client, doi: str, *, raw: bool = False) -> Sour
     except httpx.HTTPError as e:
         return _error("crossref", req, str(e))
     if not resp:
-        return _error("crossref", req, "not found")
+        return {"source": "crossref", "request": req, "status": "no_match"}
 
     msg = resp.json().get("message", {})
     if raw:
@@ -345,7 +345,7 @@ def fetch_acl(client: httpx.Client, acl_id: str, *, raw: bool = False) -> Source
     try:
         resp = client.get(url, follow_redirects=True)
         if resp.status_code == 404:
-            return _error("acl_anthology", req, "not found")
+            return {"source": "acl_anthology", "request": req, "status": "no_match"}
         resp.raise_for_status()
     except httpx.HTTPError as e:
         return _error("acl_anthology", req, str(e))
