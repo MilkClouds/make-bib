@@ -19,10 +19,9 @@ The script is at `scripts/paper_sources.py` (run via `uv run scripts/paper_sourc
 
    **Phase B — Confirm venue:** Determine the highest-priority venue.
    - `fetch --json <ID>` → check S2 `venue` and `externalIds`.
-   - If venue is a clear journal/conference (e.g. "Nature", "NeurIPS", "CVPR"): confirmed.
-   - If venue is arXiv, empty, or ambiguous: cross-search by title:
-     - `search openreview "<title>"` — check for conference/workshop acceptance
-     - `search dblp "<title>"` — check for DBLP listing
+   - Always cross-search by title, even when S2 reports a clear venue:
+     - `search openreview "<full paper title>"` — use the complete title, not abbreviations.
+     - `search dblp "<title>"` — check for DBLP listing.
      - If multiple or ambiguous results, use `AskUserQuestion` to let the user pick.
      - If a published version is found, record that source's ID (e.g. `openreview:xxx`).
      - If nothing found after all searches: confirmed as arXiv preprint.
@@ -59,6 +58,12 @@ The script is at `scripts/paper_sources.py` (run via `uv run scripts/paper_sourc
 - Venue precedence: Journal > Conference > Workshop > arXiv
 - Protect proper nouns/acronyms: `{BERT}`, `{B}ayesian` — don't over-brace.
 - Authors: `Last, First and Last, First`. Remove DBLP disambiguation numbers.
+- Authors and all other fields must come from the same official source (step 2).
+- When truncating authors with `and others`, count `and` separators mechanically.
+
+**Pitfalls** (learned from real errors):
+- S2 is only reliable for venue/ID discovery. Its author names can map to wrong people (e.g. "Qiang Liu" → "Qian Liu"), and its venue field omits track-level detail (e.g. "NeurIPS" for both main conference and workshops).
+- OpenReview search results may include DBLP mirror notes (`invitation: "DBLP.org/-/Record"`). These lack track-level venue info. When picking a forum ID to fetch, prefer notes whose `invitation` contains the venue domain (e.g. `NeurIPS.cc/`, `ICLR.cc/`).
 
 ## `bibstyle.toml` schema and defaults
 
