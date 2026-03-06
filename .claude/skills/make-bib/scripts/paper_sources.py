@@ -39,6 +39,52 @@ SourceData = dict[str, Any]
 
 
 # =============================================================================
+# Rate Limiting
+# =============================================================================
+
+
+class RateLimiter:
+    """Enforces minimum interval between requests to a single API."""
+
+    def __init__(self, min_interval: float):
+        self.min_interval = min_interval
+        self._last: float = 0.0
+
+    def wait(self) -> None:
+        now = time.monotonic()
+        wait = self.min_interval - (now - self._last)
+        if wait > 0:
+            time.sleep(wait)
+        self._last = time.monotonic()
+
+
+def _s2_interval() -> float:
+    """S2: 1 rps with API key, 3s without (shared 5000 req/5min pool)."""
+    return 1.0 if os.environ.get("SEMANTIC_SCHOLAR_API_KEY") else 3.0
+
+
+_RATE_LIMITERS: dict[str, RateLimiter] = {
+    "api.semanticscholar.org": RateLimiter(_s2_interval()),
+    "api.crossref.org": RateLimiter(0.1),  # Polite pool: 10 rps (mailto required)
+    "dblp.org": RateLimiter(1.0),  # No official limit; polite 1 rps
+    "export.arxiv.org": RateLimiter(3.0),  # Recommended: ≤1 req/3s
+    "api.openreview.net": RateLimiter(1.0),  # No official limit
+    "api2.openreview.net": RateLimiter(1.0),
+    "aclanthology.org": RateLimiter(1.0),  # Static site; polite 1 rps
+}
+
+
+def _rate_limit(url: str) -> None:
+    """Wait if needed to respect per-domain rate limits."""
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname or ""
+    limiter = _RATE_LIMITERS.get(host)
+    if limiter:
+        limiter.wait()
+
+
+# =============================================================================
 # Helpers
 # =============================================================================
 
@@ -113,6 +159,7 @@ class PaperId:
 
 def _get(client: httpx.Client, url: str, *, headers: dict | None = None, **kwargs: Any) -> httpx.Response | None:
     """GET with retry on 429. Returns None on 404/410. Raises on other errors."""
+    _rate_limit(url)
     hdrs = headers or {}
     for attempt in range(3):
         resp = client.get(url, headers=hdrs, **kwargs)
@@ -251,6 +298,7 @@ def fetch_arxiv(client: httpx.Client, arxiv_id: str, *, raw: bool = False) -> So
     req = {"url": url, "params": params}
 
     try:
+        _rate_limit(url)
         resp = client.get(url, params=params)
         resp.raise_for_status()
     except httpx.HTTPError as e:
@@ -348,6 +396,7 @@ def fetch_acl(client: httpx.Client, acl_id: str, *, raw: bool = False) -> Source
     req = {"url": url}
 
     try:
+        _rate_limit(url)
         resp = client.get(url, follow_redirects=True)
         if resp.status_code == 404:
             return {"source": "acl_anthology", "request": req, "status": "no_match"}
@@ -507,6 +556,7 @@ def search_arxiv(client: httpx.Client, title: str) -> SourceData:
     req = {"url": url, "params": params}
 
     try:
+        _rate_limit(url)
         resp = client.get(url, params=params)
         resp.raise_for_status()
     except httpx.HTTPError as e:
