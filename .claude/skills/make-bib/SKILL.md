@@ -25,7 +25,7 @@ The script is at `scripts/paper_sources.py` (run via `uv run scripts/paper_sourc
      - `search openreview "<full paper title>"` — use the complete title, not abbreviations.
      - `search dblp "<title>"` — check for DBLP listing.
      - If multiple or ambiguous results, use `AskUserQuestion` to let the user pick.
-     - If a published version is found, record that source's ID (e.g. `openreview:xxx`).
+     - Record all IDs found across searches. Step 2 picks the highest-priority source.
      - If nothing found after all searches: confirmed as arXiv preprint.
    - Use `fetch` and `search` as many times as needed. Be thorough.
 
