@@ -11,6 +11,8 @@ The script is at `scripts/paper_sources.py` (run via `uv run scripts/paper_sourc
 
 ## Steps
 
+0. If the input has no associated paper (e.g. software package, GitHub repo, book), ask the user how to cite it via `AskUserQuestion`.
+
 1. **Find the venue.** If a venue exists, failing to find it is unacceptable.
 
    **Phase A — Obtain ID:** Get at least one paper ID and the canonical title.
@@ -55,6 +57,7 @@ The script is at `scripts/paper_sources.py` (run via `uv run scripts/paper_sourc
 6. Output ONLY the annotated BibTeX entry.
 
 **Hard rules**:
+- Entry types: `@inproceedings` for conference/workshop, `@article` for journal/arXiv, `@misc` for software/datasets.
 - Venue precedence: Journal > Conference > Workshop > arXiv
 - Protect proper nouns/acronyms: `{BERT}`, `{B}ayesian` — don't over-brace.
 - Authors: `Last, First and Last, First`. Remove DBLP disambiguation numbers.
