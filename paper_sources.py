@@ -333,11 +333,10 @@ def fetch_acl(client: httpx.Client, acl_id: str) -> SourceData:
 # =============================================================================
 
 
-def search_dblp(client: httpx.Client, title: str, venue: str | None = None) -> SourceData:  # noqa: ARG001
+def search_dblp(client: httpx.Client, title: str) -> SourceData:
     """Search DBLP by title. Returns all hits — does NOT pick one."""
-    query = title
     url = "https://dblp.org/search/publ/api"
-    params = {"q": query, "format": "json", "h": 10}
+    params = {"q": title, "format": "json", "h": 10}
     req = {"url": url, "params": params}
 
     try:
@@ -351,6 +350,9 @@ def search_dblp(client: httpx.Client, title: str, venue: str | None = None) -> S
     results = []
     for hit in hits:
         info = hit.get("info", {})
+        raw_authors = info.get("authors", {}).get("author", [])
+        if not isinstance(raw_authors, list):
+            raw_authors = [raw_authors]
         results.append(
             {
                 "title": (info.get("title") or "").rstrip("."),
@@ -358,10 +360,7 @@ def search_dblp(client: httpx.Client, title: str, venue: str | None = None) -> S
                 "year": info.get("year"),
                 "type": info.get("type"),
                 "key": info.get("key"),
-                "authors": [
-                    a.get("text", "") if isinstance(a, dict) else str(a)
-                    for a in (lambda v: v if isinstance(v, list) else [v])(info.get("authors", {}).get("author", []))
-                ],
+                "authors": [a.get("text", "") if isinstance(a, dict) else str(a) for a in raw_authors],
                 "url": info.get("ee"),
             }
         )
@@ -371,7 +370,7 @@ def search_dblp(client: httpx.Client, title: str, venue: str | None = None) -> S
         "request": req,
         "status": "ok",
         "match_type": "search",
-        "response": {"query": query, "total": len(results), "hits": results},
+        "response": {"query": title, "total": len(results), "hits": results},
     }
 
 
@@ -390,10 +389,7 @@ def search_openreview(client: httpx.Client, title: str) -> SourceData:
         except httpx.HTTPError:
             continue
 
-        results = []
-        for note in resp.json().get("notes", []):
-            results.append(_or_note_to_dict(note, raw=False))
-
+        results = [_or_note_to_dict(note, raw=False) for note in resp.json().get("notes", [])]
         return {
             "source": "openreview",
             "request": last_req,
@@ -403,6 +399,137 @@ def search_openreview(client: httpx.Client, title: str) -> SourceData:
         }
 
     return _error("openreview", last_req, "could not reach OpenReview API")
+
+
+def search_crossref(client: httpx.Client, title: str) -> SourceData:
+    """Search CrossRef by title. Returns all matching works."""
+    url = "https://api.crossref.org/works"
+    params = {"query": title, "rows": "10"}
+    req = {"url": url, "params": params}
+
+    try:
+        ua = "paper_sources/0.1 (https://github.com/bibtools)"
+        email = os.environ.get("CROSSREF_EMAIL")
+        if email:
+            ua += f" (mailto:{email})"
+        resp = _get(client, url, headers={"User-Agent": ua}, params=params)
+        if not resp:
+            return _error("crossref", req, "not found")
+    except httpx.HTTPError as e:
+        return _error("crossref", req, str(e))
+
+    items = resp.json().get("message", {}).get("items", [])
+    results = []
+    for item in items:
+        authors = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in item.get("author", [])]
+        titles = item.get("title", [])
+        results.append(
+            {
+                "title": titles[0] if titles else "—",
+                "container-title": (item.get("container-title") or ["—"])[0],
+                "type": item.get("type"),
+                "DOI": item.get("DOI"),
+                "year": str(item.get("issued", {}).get("date-parts", [[None]])[0][0] or "—"),
+                "authors": authors,
+                "page": item.get("page"),
+                "volume": item.get("volume"),
+            }
+        )
+
+    return {
+        "source": "crossref",
+        "request": req,
+        "status": "ok",
+        "match_type": "search",
+        "response": {"query": title, "total": len(results), "hits": results},
+    }
+
+
+def search_arxiv(client: httpx.Client, title: str) -> SourceData:
+    """Search arXiv by title. Returns all matching entries."""
+    url = "https://export.arxiv.org/api/query"
+    params = {"search_query": f'ti:"{title}"', "max_results": "10", "sortBy": "relevance"}
+    req = {"url": url, "params": params}
+
+    try:
+        resp = client.get(url, params=params)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        return _error("arxiv", req, str(e))
+
+    root = ET.fromstring(resp.text)
+    results = []
+    for entry in root.findall("atom:entry", _ARXIV_NS):
+        entry_id = entry.findtext("atom:id", "", _ARXIV_NS)
+        if "error" in entry_id.lower():
+            continue
+        authors = [el.findtext("atom:name", "", _ARXIV_NS) for el in entry.findall("atom:author", _ARXIV_NS)]
+        categories = [el.get("term", "") for el in entry.findall("arxiv:primary_category", _ARXIV_NS)]
+        results.append(
+            {
+                "title": " ".join((entry.findtext("atom:title", "", _ARXIV_NS) or "").split()),
+                "id": entry_id,
+                "authors": authors,
+                "published": entry.findtext("atom:published", "", _ARXIV_NS)[:10],
+                "categories": categories,
+                "comment": entry.findtext("arxiv:comment", None, _ARXIV_NS),
+            }
+        )
+
+    return {
+        "source": "arxiv",
+        "request": req,
+        "status": "ok",
+        "match_type": "search",
+        "response": {"query": title, "total": len(results), "hits": results},
+    }
+
+
+def search_s2(client: httpx.Client, title: str) -> SourceData:
+    """Search Semantic Scholar by title. Returns all matching papers."""
+    url = f"{_S2_BASE}/paper/search"
+    params = {"query": title, "limit": "10", "fields": "title,year,venue,externalIds,authors"}
+    req = {"url": url, "params": params}
+
+    try:
+        resp = _get(client, url, headers=_s2_headers(), params=params)
+        if not resp:
+            return _error("s2", req, "not found")
+    except httpx.HTTPError as e:
+        return _error("s2", req, str(e))
+
+    data = resp.json().get("data", [])
+    results = []
+    for paper in data:
+        ext = paper.get("externalIds") or {}
+        results.append(
+            {
+                "title": paper.get("title"),
+                "venue": paper.get("venue"),
+                "year": paper.get("year"),
+                "authors": [a.get("name", "") for a in paper.get("authors", [])],
+                "DOI": ext.get("DOI"),
+                "ArXiv": ext.get("ArXiv"),
+                "DBLP": ext.get("DBLP"),
+            }
+        )
+
+    return {
+        "source": "s2",
+        "request": req,
+        "status": "ok",
+        "match_type": "search",
+        "response": {"query": title, "total": len(results), "hits": results},
+    }
+
+
+_SEARCH_SOURCES: dict[str, Any] = {
+    "dblp": search_dblp,
+    "openreview": search_openreview,
+    "crossref": search_crossref,
+    "arxiv": search_arxiv,
+    "s2": search_s2,
+}
 
 
 # =============================================================================
@@ -542,15 +669,16 @@ def fetch_all(
     return results
 
 
-def search_all(
+def search_one(
+    source: str,
     paper_id: str,
     log: Console,
-    *,
-    sources: list[str] | None = None,
 ) -> list[SourceData]:
-    """Title-based search on DBLP and OpenReview. Returns all results — no judgment."""
-    search_sources = {"dblp", "openreview"}
-    enabled = set(sources) & search_sources if sources else search_sources
+    """Search a single source by title. Resolves paper_id to title first."""
+    search_fn = _SEARCH_SOURCES.get(source)
+    if not search_fn:
+        return [_error(source, {}, f"unknown search source: {source}")]
+
     results: list[SourceData] = []
 
     with httpx.Client(timeout=30.0) as client:
@@ -565,21 +693,11 @@ def search_all(
             )
             return results
 
-        venue = ids.get("venue")
-
-        if "dblp" in enabled:
-            log.print("  [dim]dblp: searching…[/]", end="")
-            result = search_dblp(client, title, venue)
-            results.append(result)
-            n = result.get("response", {}).get("total", 0) if result["status"] == "ok" else 0
-            log.print(f" [green]{n} results[/]" if result["status"] == "ok" else " [red]error[/]")
-
-        if "openreview" in enabled:
-            log.print("  [dim]openreview: searching…[/]", end="")
-            result = search_openreview(client, title)
-            results.append(result)
-            n = result.get("response", {}).get("total", 0) if result["status"] == "ok" else 0
-            log.print(f" [green]{n} results[/]" if result["status"] == "ok" else " [red]error[/]")
+        log.print(f"  [dim]{source}: searching…[/]", end="")
+        result = search_fn(client, title)
+        results.append(result)
+        n = result.get("response", {}).get("total", 0) if result["status"] == "ok" else 0
+        log.print(f" [green]{n} results[/]" if result["status"] == "ok" else " [red]error[/]")
 
     return results
 
@@ -686,26 +804,46 @@ def display_search(results: list[SourceData], console: Console) -> None:
             continue
 
         for i, hit in enumerate(hits, 1):
+            title = hit.get("title", "—")
+            authors_list = hit.get("authors", [])
+            authors = ", ".join(authors_list[:3])
+            if len(authors_list) > 3:
+                authors += " et al."
+
+            console.print(f"  [bold][{i}][/] {title}")
+
+            # Source-specific detail line
             if name == "dblp":
-                title = hit.get("title", "—")
-                venue = hit.get("venue", "—")
-                year = hit.get("year", "—")
-                key = hit.get("key", "—")
-                authors = ", ".join(hit.get("authors", [])[:3])
-                if len(hit.get("authors", [])) > 3:
-                    authors += " et al."
-                console.print(f"  [bold][{i}][/] {title}")
-                console.print(f"      [cyan]venue[/]={venue}  [cyan]year[/]={year}  [cyan]key[/]={key}")
-                console.print(f"      [dim]{authors}[/]")
+                console.print(
+                    f"      [cyan]venue[/]={hit.get('venue', '—')}  "
+                    f"[cyan]year[/]={hit.get('year', '—')}  [cyan]key[/]={hit.get('key', '—')}"
+                )
             elif name == "openreview":
-                title = hit.get("title", "—")
-                venue = hit.get("venue", "—")
-                invitation = hit.get("invitation", "—")
-                url = hit.get("url", "—")
-                console.print(f"  [bold][{i}][/] {title}")
-                console.print(f"      [cyan]venue[/]={venue}")
-                console.print(f"      [cyan]invitation[/]={invitation}")
-                console.print(f"      [dim]{url}[/]")
+                console.print(f"      [cyan]venue[/]={hit.get('venue', '—')}")
+                console.print(f"      [cyan]invitation[/]={hit.get('invitation', '—')}")
+                if hit.get("url"):
+                    console.print(f"      [dim]{hit['url']}[/]")
+            elif name == "crossref":
+                console.print(
+                    f"      [cyan]container[/]={hit.get('container-title', '—')}  "
+                    f"[cyan]year[/]={hit.get('year', '—')}  [cyan]type[/]={hit.get('type', '—')}"
+                )
+                if hit.get("DOI"):
+                    console.print(f"      [dim]DOI: {hit['DOI']}[/]")
+            elif name == "arxiv":
+                console.print(
+                    f"      [cyan]published[/]={hit.get('published', '—')}  "
+                    f"[cyan]categories[/]={', '.join(hit.get('categories', []))}"
+                )
+                if hit.get("id"):
+                    console.print(f"      [dim]{hit['id']}[/]")
+            elif name == "s2":
+                console.print(f"      [cyan]venue[/]={hit.get('venue', '—')}  [cyan]year[/]={hit.get('year', '—')}")
+                ids = [f"{k}={v}" for k, v in hit.items() if k in ("DOI", "ArXiv", "DBLP") and v]
+                if ids:
+                    console.print(f"      [dim]{', '.join(ids)}[/]")
+
+            console.print(f"      [dim]{authors}[/]")
             console.print()
 
 
@@ -774,94 +912,122 @@ def display_raw(results: list[SourceData], source_name: str) -> None:
 # =============================================================================
 
 
+_PAPER_ID_HELP = (
+    "paper identifier: arXiv ID (2010.11929), DOI (10.18653/v1/N19-1423), "
+    "Semantic Scholar ID (ARXIV:2010.11929, DOI:10.xxx, CorpusId:12345), "
+    "or OpenReview URL (https://openreview.net/forum?id=XXX)"
+)
+
+_SHARED_EPILOG = (
+    "environment variables:\n"
+    "  SEMANTIC_SCHOLAR_API_KEY  higher rate limits for S2 ID resolution\n"
+    "  CROSSREF_EMAIL           polite pool with better rate limits (any valid email)"
+)
+
+
 def main() -> None:
+    _search_names = ", ".join(_SEARCH_SOURCES)
+
     parser = argparse.ArgumentParser(
         description="Fetch paper metadata from multiple academic sources and present raw results.\n"
-        "Two modes:\n"
-        "  (default)   Exact ID-based fetch — each source is queried by its native ID.\n"
-        "              No fuzzy matching, no hidden judgment.\n"
-        "  --search    Title-based search on DBLP and OpenReview.\n"
-        "              Returns ALL results as a numbered list. You pick the right one.",
+        "The tool fetches and presents. It never judges.",
         epilog=(
             "examples:\n"
-            "  %(prog)s 2010.11929                         # exact fetch via arXiv ID\n"
-            "  %(prog)s 10.18653/v1/N19-1423                # exact fetch via DOI\n"
-            "  %(prog)s 'https://openreview.net/forum?id=X' # exact fetch via OpenReview URL\n"
-            "  %(prog)s --json 1706.03762                   # JSON for piping to AI agent\n"
-            "  %(prog)s --search 1706.03762                 # search DBLP/OpenReview by title\n"
-            "  %(prog)s --raw crossref 10.18653/v1/N19-1423 # full raw CrossRef API response\n"
-            "\n"
-            "fetch sources (exact ID-based):\n"
+            "  %(prog)s fetch 2010.11929                           # exact fetch via arXiv ID\n"
+            "  %(prog)s fetch 10.18653/v1/N19-1423                  # exact fetch via DOI\n"
+            "  %(prog)s fetch 'https://openreview.net/forum?id=X'   # exact fetch via OpenReview URL\n"
+            "  %(prog)s fetch --json 1706.03762                     # JSON for piping to AI agent\n"
+            "  %(prog)s fetch --raw crossref 10.18653/v1/N19-1423   # full raw CrossRef API response\n"
+            "  %(prog)s search dblp 1706.03762                      # search DBLP by title\n"
+            "  %(prog)s search openreview 1706.03762                # search OpenReview by title\n"
+            "  %(prog)s search s2 1706.03762                        # search Semantic Scholar by title\n"
+            "  %(prog)s search --json crossref 1706.03762           # search CrossRef, JSON output\n"
+            "\n" + _SHARED_EPILOG
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # -- fetch subcommand --
+    p_fetch = sub.add_parser(
+        "fetch",
+        help="exact ID-based fetch from all sources (no fuzzy matching)",
+        epilog=(
+            "sources (exact ID-based):\n"
             "  dblp           exact key lookup (requires S2 to provide DBLP key)\n"
             "  crossref       DOI lookup — container-title, author, page, volume\n"
             "  openreview     forum ID lookup — venue, acceptance type, BibTeX, keywords\n"
             "  acl_anthology  ACL ID lookup — complete, copy-ready BibTeX\n"
             "  arxiv          arXiv ID lookup — categories, dates, comments\n"
-            "\n"
-            "search sources (title-based, returns list):\n"
-            "  dblp           title search — returns up to 10 results\n"
-            "  openreview     title search — returns up to 10 results\n"
-            "\n"
-            "environment variables:\n"
-            "  SEMANTIC_SCHOLAR_API_KEY  higher rate limits for S2 ID resolution\n"
-            "  CROSSREF_EMAIL           polite pool with better rate limits (any valid email)"
+            "\n" + _SHARED_EPILOG
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "paper_id",
-        help="paper identifier: arXiv ID (2010.11929), DOI (10.18653/v1/N19-1423), "
-        "Semantic Scholar ID (ARXIV:2010.11929, DOI:10.xxx, CorpusId:12345), "
-        "or OpenReview URL (https://openreview.net/forum?id=XXX)",
-    )
-    parser.add_argument(
-        "--search",
-        action="store_true",
-        help="search mode: resolve paper ID to title via S2, then search DBLP and OpenReview. "
-        "returns ALL results as a numbered list (no judgment, no auto-picking). "
-        "use this when exact IDs are not available",
-    )
-    parser.add_argument("--json", action="store_true", help="output as JSON array with _meta per source")
-    parser.add_argument(
+    p_fetch.add_argument("paper_id", help=_PAPER_ID_HELP)
+    p_fetch.add_argument("--json", action="store_true", help="output as JSON array with _meta per source")
+    p_fetch.add_argument(
         "--sources", help=f"comma-separated list of sources (default: all). choices: {','.join(ALL_SOURCES)}"
     )
-    parser.add_argument(
+    p_fetch.add_argument(
         "--raw",
         metavar="SOURCE",
         help=f"full unfiltered API response from one source. choices: {','.join(ALL_SOURCES)}",
     )
-    args = parser.parse_args()
 
-    sources = None
-    raw = False
-    if args.raw:
-        if args.raw not in ALL_SOURCES:
-            parser.error(f"Unknown source: {args.raw}. Choose from: {', '.join(ALL_SOURCES)}")
-        sources = [args.raw]
-        raw = True
-    elif args.sources:
-        sources = [s.strip() for s in args.sources.split(",")]
-        invalid = [s for s in sources if s not in ALL_SOURCES]
-        if invalid:
-            parser.error(f"Unknown sources: {', '.join(invalid)}. Choose from: {', '.join(ALL_SOURCES)}")
+    # -- search subcommand --
+    p_search = sub.add_parser(
+        "search",
+        help="title-based search on a single source (returns ALL results)",
+        epilog=(
+            "Resolves paper ID to title via S2, then searches the specified source.\n"
+            "Returns ALL results as a numbered list — no judgment, no auto-picking.\n"
+            "\n"
+            "search sources:\n"
+            "  dblp           bibliographic database — venue, year, type, key\n"
+            "  openreview     conference submissions — venue, acceptance type, BibTeX\n"
+            "  crossref       publisher metadata — DOI, container-title, page, volume\n"
+            "  arxiv          preprint server — categories, dates, comments\n"
+            "  s2             Semantic Scholar — venue, year, external IDs\n"
+            "\n" + _SHARED_EPILOG
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_search.add_argument("source", choices=list(_SEARCH_SOURCES), help=f"search source ({_search_names})")
+    p_search.add_argument("paper_id", help=_PAPER_ID_HELP)
+    p_search.add_argument("--json", action="store_true", help="output as JSON array with _meta per source")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
 
     log = Console(stderr=True)
 
-    if args.search:
-        results = search_all(args.paper_id, log, sources=sources)
+    if args.command == "search":
+        results = search_one(args.source, args.paper_id, log)
         if args.json:
             display_json(results)
         else:
             display_search(results, Console())
-    elif raw:
-        results = fetch_all(args.paper_id, log, sources=sources, raw=True)
-        display_raw(results, args.raw)
-    elif args.json:
-        results = fetch_all(args.paper_id, log, sources=sources)
-        display_json(results)
-    else:
-        results = fetch_all(args.paper_id, log, sources=sources)
-        display_rich(results, Console())
+    else:  # fetch
+        sources = None
+        if args.sources:
+            sources = [s.strip() for s in args.sources.split(",")]
+            invalid = [s for s in sources if s not in ALL_SOURCES]
+            if invalid:
+                parser.error(f"Unknown sources: {', '.join(invalid)}. Choose from: {', '.join(ALL_SOURCES)}")
+
+        if args.raw:
+            if args.raw not in ALL_SOURCES:
+                parser.error(f"Unknown source: {args.raw}. Choose from: {', '.join(ALL_SOURCES)}")
+            results = fetch_all(args.paper_id, log, sources=[args.raw], raw=True)
+            display_raw(results, args.raw)
+        elif args.json:
+            results = fetch_all(args.paper_id, log, sources=sources)
+            display_json(results)
+        else:
+            results = fetch_all(args.paper_id, log, sources=sources)
+            display_rich(results, Console())
 
 
 if __name__ == "__main__":
