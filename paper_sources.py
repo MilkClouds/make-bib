@@ -55,24 +55,26 @@ def _normalize_paper_id(paper_id: str) -> str:
     return paper_id
 
 
+_EMPTY_IDS: dict[str, str | None] = {
+    "doi": None,
+    "arxiv_id": None,
+    "acl_id": None,
+    "dblp_key": None,
+    "openreview_id": None,
+    "title": None,
+    "venue": None,
+}
+
+
 def _extract_ids_from_input(paper_id: str) -> dict[str, str | None]:
     """Extract IDs directly from the input string, without S2."""
-    ids: dict[str, str | None] = {
-        "doi": None,
-        "arxiv_id": None,
-        "acl_id": None,
-        "dblp_key": None,
-        "openreview_id": None,
-        "title": None,
-        "venue": None,
-    }
+    ids = {**_EMPTY_IDS}
     raw = paper_id.strip()
     bare = re.sub(r"^(DOI:|doi:|ARXIV:|arxiv:)", "", raw)
 
     m = re.match(r"https?://openreview\.net/forum\?id=([A-Za-z0-9_-]+)", raw)
     if m:
         ids["openreview_id"] = m.group(1)
-        return ids
 
     if re.match(r"^10\.\d{4,}/", bare):
         ids["doi"] = bare
@@ -100,6 +102,14 @@ def _get(client: httpx.Client, url: str, *, headers: dict | None = None, **kwarg
         resp.raise_for_status()
         return resp
     return None
+
+
+def _crossref_headers() -> dict[str, str]:
+    ua = "paper_sources/0.1 (https://github.com/bibtools)"
+    email = os.environ.get("CROSSREF_EMAIL")
+    if email:
+        ua += f" (mailto:{email})"
+    return {"User-Agent": ua}
 
 
 def _skipped(name: str, reason: str) -> SourceData:
@@ -151,11 +161,7 @@ def fetch_crossref(client: httpx.Client, doi: str, *, raw: bool = False) -> Sour
     req = {"url": url}
 
     try:
-        ua = "paper_sources/0.1 (https://github.com/bibtools)"
-        email = os.environ.get("CROSSREF_EMAIL")
-        if email:
-            ua += f" (mailto:{email})"
-        resp = _get(client, url, headers={"User-Agent": ua})
+        resp = _get(client, url, headers=_crossref_headers())
     except httpx.HTTPError as e:
         return _error("crossref", req, str(e))
     if not resp:
@@ -181,7 +187,7 @@ def fetch_crossref(client: httpx.Client, doi: str, *, raw: bool = False) -> Sour
     return {"source": "crossref", "request": req, "status": "ok", "response": response}
 
 
-def fetch_dblp(client: httpx.Client, dblp_key: str) -> SourceData:
+def fetch_dblp(client: httpx.Client, dblp_key: str, *, raw: bool = False) -> SourceData:
     """Fetch DBLP record by exact key via XML endpoint."""
     url = f"https://dblp.org/rec/{dblp_key}.xml"
     req = {"url": url}
@@ -191,6 +197,9 @@ def fetch_dblp(client: httpx.Client, dblp_key: str) -> SourceData:
             return {"source": "dblp", "request": req, "status": "no_match"}
     except httpx.HTTPError as e:
         return _error("dblp", req, str(e))
+
+    if raw:
+        return {"source": "dblp", "request": req, "status": "ok", "response": {"xml": resp.text}}
 
     root = ET.fromstring(resp.text)
     entry = root[0] if len(root) > 0 else None
@@ -315,7 +324,7 @@ def fetch_openreview(client: httpx.Client, openreview_id: str, *, raw: bool = Fa
     )
 
 
-def fetch_acl(client: httpx.Client, acl_id: str) -> SourceData:
+def fetch_acl(client: httpx.Client, acl_id: str, *, raw: bool = False) -> SourceData:
     url = f"https://aclanthology.org/{acl_id}.bib"
     req = {"url": url}
 
@@ -410,11 +419,7 @@ def search_crossref(client: httpx.Client, title: str) -> SourceData:
     req = {"url": url, "params": params}
 
     try:
-        ua = "paper_sources/0.1 (https://github.com/bibtools)"
-        email = os.environ.get("CROSSREF_EMAIL")
-        if email:
-            ua += f" (mailto:{email})"
-        resp = _get(client, url, headers={"User-Agent": ua}, params=params)
+        resp = _get(client, url, headers=_crossref_headers(), params=params)
         if not resp:
             return _error("crossref", req, "not found")
     except httpx.HTTPError as e:
@@ -566,27 +571,30 @@ _SOURCE_META: dict[str, dict[str, str]] = {
     },
 }
 
-# Fetch dispatch: (name, fetch_fn, id_field)
-_FETCH_SOURCES: list[tuple[str, Any, str]] = [
-    ("dblp", fetch_dblp, "dblp_key"),
-    ("crossref", fetch_crossref, "doi"),
-    ("openreview", fetch_openreview, "openreview_id"),
-    ("acl_anthology", fetch_acl, "acl_id"),
-    ("arxiv", fetch_arxiv, "arxiv_id"),
-]
+_FETCH_SOURCES: dict[str, dict[str, Any]] = {
+    "dblp": {"fn": fetch_dblp, "id_field": "dblp_key"},
+    "crossref": {"fn": fetch_crossref, "id_field": "doi"},
+    "openreview": {"fn": fetch_openreview, "id_field": "openreview_id"},
+    "acl_anthology": {"fn": fetch_acl, "id_field": "acl_id"},
+    "arxiv": {"fn": fetch_arxiv, "id_field": "arxiv_id"},
+}
 
-ALL_SOURCES = [name for name, _, _ in _FETCH_SOURCES]
+ALL_SOURCES = list(_FETCH_SOURCES)
 
 
 def _extract_ids(s2_data: dict) -> dict[str, str | None]:
-    """Extract external IDs from S2 response into a flat lookup."""
+    """Extract external IDs from S2 response into a flat lookup.
+
+    Note: S2 does not provide OpenReview forum IDs in externalIds.
+    OpenReview ID is filled by _extract_ids_from_input merge in _resolve_ids.
+    """
     ext = s2_data.get("externalIds") or {}
     return {
+        **_EMPTY_IDS,
         "doi": ext.get("DOI"),
         "arxiv_id": ext.get("ArXiv"),
         "acl_id": ext.get("ACL"),
         "dblp_key": ext.get("DBLP"),
-        "openreview_id": None,
         "title": s2_data.get("title"),
         "venue": s2_data.get("venue"),
     }
@@ -641,11 +649,12 @@ def fetch_all(
         s2, ids = _resolve_ids(client, paper_id, log)
         results.append(s2)
 
-        for name, fetch_fn, id_field in _FETCH_SOURCES:
+        for name, spec in _FETCH_SOURCES.items():
             if name not in enabled:
                 results.append(_skipped(name, "disabled"))
                 continue
 
+            id_field = spec["id_field"]
             id_val = ids.get(id_field)
             if not id_val:
                 results.append(_skipped(name, f"no {id_field}"))
@@ -653,11 +662,7 @@ def fetch_all(
                 continue
 
             log.print(f"  [dim]{name}: fetching…[/]", end="")
-            # CrossRef and arXiv accept raw kwarg; DBLP, OpenReview, ACL do not
-            if name in ("crossref", "arxiv"):
-                result = fetch_fn(client, id_val, raw=raw)
-            else:
-                result = fetch_fn(client, id_val)
+            result = spec["fn"](client, id_val, raw=raw)
             results.append(result)
 
             status = result["status"]
@@ -923,20 +928,8 @@ def display_raw(results: list[SourceData], source_name: str) -> None:
 # =============================================================================
 
 
-class SearchSource(str, Enum):
-    dblp = "dblp"
-    openreview = "openreview"
-    crossref = "crossref"
-    arxiv = "arxiv"
-    s2 = "s2"
-
-
-class FetchSource(str, Enum):
-    dblp = "dblp"
-    crossref = "crossref"
-    openreview = "openreview"
-    acl_anthology = "acl_anthology"
-    arxiv = "arxiv"
+SearchSource = Enum("SearchSource", {k: k for k in _SEARCH_SOURCES}, type=str)  # type: ignore[misc]
+FetchSource = Enum("FetchSource", {k: k for k in _FETCH_SOURCES}, type=str)  # type: ignore[misc]
 
 
 app = typer.Typer(
