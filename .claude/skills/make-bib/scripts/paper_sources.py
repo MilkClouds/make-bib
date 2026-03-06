@@ -415,7 +415,9 @@ def fetch_acl(client: httpx.Client, acl_id: str, *, raw: bool = False) -> Source
 def search_dblp(client: httpx.Client, title: str) -> SourceData:
     """Search DBLP by title. Returns all hits — does NOT pick one."""
     url = "https://dblp.org/search/publ/api"
-    params = {"q": title, "format": "json", "h": 10}
+    # Quote the title for exact phrase matching in DBLP search
+    quoted_title = f'"{title}"' if '"' not in title else title
+    params = {"q": quoted_title, "format": "json", "h": 10}
     req = {"url": url, "params": params}
 
     try:
@@ -826,7 +828,8 @@ def _format_url(req: dict) -> str:
     url = req.get("url", "")
     params = req.get("params")
     if params:
-        return url + "?" + "&".join(f"{k}={v}" for k, v in params.items())
+        from urllib.parse import urlencode
+        return url + "?" + urlencode(params)
     return url
 
 
