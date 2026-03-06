@@ -22,8 +22,9 @@ import re
 import sys
 import time
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import quote
 
 import httpx
@@ -42,49 +43,69 @@ SourceData = dict[str, Any]
 # =============================================================================
 
 
-def _normalize_paper_id(paper_id: str) -> str:
-    """Add type prefix for Semantic Scholar API (ARXIV:, DOI:, etc.)."""
-    if re.match(r"^(DOI|ARXIV|CorpusId|PMID|ACL|MAG|URL):", paper_id, re.IGNORECASE):
-        return paper_id
-    if "openreview.net" in paper_id:
-        return f"URL:{paper_id}"
-    if re.match(r"^\d{4}\.\d{4,5}(v\d+)?$", paper_id):
-        return f"ARXIV:{paper_id}"
-    if re.match(r"^10\.\d{4,}/", paper_id):
-        return f"DOI:{paper_id}"
-    return paper_id
+_PAPER_ID_TYPES = ("arxiv", "doi", "openreview")
 
 
-_EMPTY_IDS: dict[str, str | None] = {
-    "doi": None,
-    "arxiv_id": None,
-    "acl_id": None,
-    "dblp_key": None,
-    "openreview_id": None,
-    "title": None,
-    "venue": None,
-}
+@dataclass(frozen=True)
+class PaperId:
+    """Parsed paper identifier. Always requires explicit type prefix.
 
+    Formats:
+        arxiv:2010.11929
+        doi:10.18653/v1/N19-1423
+        openreview:rsHxs0YDor
+    """
 
-def _extract_ids_from_input(paper_id: str) -> dict[str, str | None]:
-    """Extract IDs directly from the input string, without S2."""
-    ids = {**_EMPTY_IDS}
-    raw = paper_id.strip()
-    bare = re.sub(r"^(DOI:|doi:|ARXIV:|arxiv:)", "", raw)
+    type: Literal["arxiv", "doi", "openreview"]
+    value: str
 
-    m = re.match(r"https?://openreview\.net/forum\?id=([A-Za-z0-9_-]+)", raw)
-    if m:
-        ids["openreview_id"] = m.group(1)
+    @classmethod
+    def parse(cls, raw: str) -> PaperId:
+        s = raw.strip()
+        if ":" not in s:
+            raise ValueError(
+                f"Missing type prefix in {s!r}. "
+                f"Expected format: {{type}}:{{value}} where type is one of {_PAPER_ID_TYPES}"
+            )
+        type_str, value = s.split(":", 1)
+        if type_str not in _PAPER_ID_TYPES:
+            raise ValueError(
+                f"Unknown type {type_str!r}. Expected one of {_PAPER_ID_TYPES}"
+            )
+        if not value:
+            raise ValueError("Empty value after prefix")
+        # Strip arXiv version suffix (e.g. "1706.03762v7" → "1706.03762")
+        if type_str == "arxiv":
+            value = re.sub(r"v\d+$", "", value)
+        return cls(type_str, value)  # type: ignore[arg-type]
 
-    if re.match(r"^10\.\d{4,}/", bare):
-        ids["doi"] = bare
-        m = re.match(r"^10\.18653/v1/(.+)$", bare)
-        if m:
-            ids["acl_id"] = m.group(1)
-    elif re.match(r"^\d{4}\.\d{4,5}(v\d+)?$", bare):
-        ids["arxiv_id"] = bare
+    def to_s2_query(self) -> str:
+        """Convert to Semantic Scholar API query format."""
+        match self.type:
+            case "arxiv":
+                return f"ARXIV:{self.value}"
+            case "doi":
+                return f"DOI:{self.value}"
+            case "openreview":
+                return f"URL:https://openreview.net/forum?id={self.value}"
 
-    return ids
+    def to_ids(self) -> dict[str, str | None]:
+        """Extract known IDs directly from the parsed input (no API call)."""
+        ids: dict[str, str | None] = {
+            "doi": None, "arxiv_id": None, "acl_id": None,
+            "dblp_key": None, "openreview_id": None, "title": None, "venue": None,
+        }
+        match self.type:
+            case "arxiv":
+                ids["arxiv_id"] = self.value
+            case "doi":
+                ids["doi"] = self.value
+                m = re.match(r"^10\.18653/v1/(.+)$", self.value)
+                if m:
+                    ids["acl_id"] = m.group(1)
+            case "openreview":
+                ids["openreview_id"] = self.value
+        return ids
 
 
 def _get(client: httpx.Client, url: str, *, headers: dict | None = None, **kwargs: Any) -> httpx.Response | None:
@@ -133,10 +154,10 @@ def _s2_headers() -> dict[str, str]:
     return {"x-api-key": key} if key else {}
 
 
-def resolve_s2(client: httpx.Client, paper_id: str) -> SourceData:
+def resolve_s2(client: httpx.Client, pid: PaperId) -> SourceData:
     """Resolve a paper ID to external IDs via Semantic Scholar."""
-    normalized = _normalize_paper_id(paper_id)
-    url = f"{_S2_BASE}/paper/{quote(normalized, safe=':/')}"
+    s2_query = pid.to_s2_query()
+    url = f"{_S2_BASE}/paper/{quote(s2_query, safe=':/')}"
     params = {"fields": _S2_FIELDS}
     req = {"url": url, "params": params}
 
@@ -156,7 +177,6 @@ def resolve_s2(client: httpx.Client, paper_id: str) -> SourceData:
 
 
 def fetch_crossref(client: httpx.Client, doi: str, *, raw: bool = False) -> SourceData:
-    doi = doi.removeprefix("DOI:").removeprefix("doi:")
     url = f"https://api.crossref.org/works/{doi}"
     req = {"url": url}
 
@@ -223,9 +243,6 @@ _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/s
 
 
 def fetch_arxiv(client: httpx.Client, arxiv_id: str, *, raw: bool = False) -> SourceData:
-    arxiv_id = arxiv_id.upper().removeprefix("ARXIV:").lower()
-    if "v" in arxiv_id:
-        arxiv_id = arxiv_id.rsplit("v", 1)[0]
 
     url = "https://export.arxiv.org/api/query"
     params = {"id_list": arxiv_id, "max_results": "1"}
@@ -586,33 +603,33 @@ def _extract_ids(s2_data: dict) -> dict[str, str | None]:
     """Extract external IDs from S2 response into a flat lookup.
 
     Note: S2 does not provide OpenReview forum IDs in externalIds.
-    OpenReview ID is filled by _extract_ids_from_input merge in _resolve_ids.
+    OpenReview ID is filled by PaperId.to_ids() merge in _resolve_ids.
     """
     ext = s2_data.get("externalIds") or {}
     return {
-        **_EMPTY_IDS,
         "doi": ext.get("DOI"),
         "arxiv_id": ext.get("ArXiv"),
         "acl_id": ext.get("ACL"),
         "dblp_key": ext.get("DBLP"),
+        "openreview_id": None,
         "title": s2_data.get("title"),
         "venue": s2_data.get("venue"),
     }
 
 
-def _resolve_ids(client: httpx.Client, paper_id: str, log: Console) -> tuple[SourceData, dict[str, str | None]]:
+def _resolve_ids(client: httpx.Client, pid: PaperId, log: Console) -> tuple[SourceData, dict[str, str | None]]:
     """Resolve paper ID to a complete set of IDs. Returns (s2_result, ids_dict)."""
-    log.print(f"[dim]Resolving {paper_id} via Semantic Scholar…[/]")
-    s2 = resolve_s2(client, paper_id)
+    log.print(f"[dim]Resolving {pid.type}:{pid.value} via Semantic Scholar…[/]")
+    s2 = resolve_s2(client, pid)
 
     if s2["status"] == "ok":
         ids = _extract_ids(s2["response"])
     else:
         log.print("[yellow]  S2 resolution failed, extracting IDs from input…[/]")
-        ids = _extract_ids_from_input(paper_id)
+        ids = pid.to_ids()
 
-    # Merge input-derived IDs to fill gaps
-    for k, v in _extract_ids_from_input(paper_id).items():
+    # Merge input-derived IDs to fill gaps (e.g. OpenReview ID from input)
+    for k, v in pid.to_ids().items():
         if v and not ids.get(k):
             ids[k] = v
 
@@ -635,7 +652,7 @@ def _resolve_ids(client: httpx.Client, paper_id: str, log: Console) -> tuple[Sou
 
 
 def fetch_all(
-    paper_id: str,
+    pid: PaperId,
     log: Console,
     *,
     sources: list[str] | None = None,
@@ -646,7 +663,7 @@ def fetch_all(
     results: list[SourceData] = []
 
     with httpx.Client(timeout=30.0) as client:
-        s2, ids = _resolve_ids(client, paper_id, log)
+        s2, ids = _resolve_ids(client, pid, log)
         results.append(s2)
 
         for name, spec in _FETCH_SOURCES.items():
@@ -699,7 +716,8 @@ def search_one(
             search_title = query
             log.print(f'[dim]Searching by title: "{search_title}"[/]\n')
         else:
-            s2, ids = _resolve_ids(client, query, log)
+            pid = PaperId.parse(query)
+            s2, ids = _resolve_ids(client, pid, log)
             results.append(s2)
             search_title = ids.get("title")
             if not search_title:
@@ -941,20 +959,19 @@ app = typer.Typer(
 
 @app.command()
 def fetch(
-    paper_id: Annotated[
-        str,
-        typer.Argument(
-            help="arXiv ID (2010.11929), DOI (10.18653/v1/N19-1423), "
-            "S2 ID (ARXIV:2010.11929, DOI:10.xxx, CorpusId:12345), "
-            "or OpenReview URL (https://openreview.net/forum?id=XXX)",
-        ),
-    ],
+    paper_id: Annotated[str, typer.Argument(help="arxiv:ID, doi:ID, or openreview:ID")],
     json_output: Annotated[bool, typer.Option("--json", help="output as JSON array with _meta per source")] = False,
     sources: Annotated[Optional[str], typer.Option(help="comma-separated list of sources (default: all)")] = None,
     raw: Annotated[Optional[FetchSource], typer.Option(help="full unfiltered API response from one source")] = None,
 ) -> None:
     """Exact ID-based fetch from all sources (no fuzzy matching)."""
     log = Console(stderr=True)
+
+    try:
+        pid = PaperId.parse(paper_id)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
 
     src_list = None
     if sources:
@@ -967,20 +984,20 @@ def fetch(
             raise typer.Exit(1)
 
     if raw:
-        results = fetch_all(paper_id, log, sources=[raw.value], raw=True)
+        results = fetch_all(pid, log, sources=[raw.value], raw=True)
         display_raw(results, raw.value)
     elif json_output:
-        results = fetch_all(paper_id, log, sources=src_list)
+        results = fetch_all(pid, log, sources=src_list)
         display_json(results)
     else:
-        results = fetch_all(paper_id, log, sources=src_list)
+        results = fetch_all(pid, log, sources=src_list)
         display_rich(results, Console())
 
 
 @app.command()
 def search(
     source: Annotated[SearchSource, typer.Argument(help="search source")],
-    query: Annotated[str, typer.Argument(help="paper ID, or title string when --title is used")],
+    query: Annotated[str, typer.Argument(help="arxiv:ID / doi:ID / openreview:ID, or title with --title")],
     title: Annotated[
         bool, typer.Option("--title", "-t", help="treat query as a plain title (skip S2 ID resolution)")
     ] = False,
@@ -988,6 +1005,12 @@ def search(
 ) -> None:
     """Search a single source by title. By default resolves paper ID to title via S2."""
     log = Console(stderr=True)
+    if not title:
+        try:
+            PaperId.parse(query)  # validate format
+        except ValueError as e:
+            typer.echo(f"Error: {e}\nUse --title/-t for plain title search.", err=True)
+            raise typer.Exit(1) from None
     results = search_one(source.value, query, log, title=title)
     if json_output:
         display_json(results)
