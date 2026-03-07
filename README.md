@@ -136,6 +136,7 @@ Input: paper ID, title, or abbreviation
 ## Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — Anthropic's CLI for Claude. This skill runs inside Claude Code, not as a standalone tool.
+- **Claude Opus 4.6** — make-bib requires multi-step judgment (source selection, venue verification, disambiguation). Lower-tier models may skip steps, pick wrong sources, or silently guess instead of asking. Opus 4.6 is the only model make-bib is designed for and tested with.
 - Python 3.10+ and [uv](https://docs.astral.sh/uv/) (for the bundled DBLP local database scripts)
 
 ## Installation
