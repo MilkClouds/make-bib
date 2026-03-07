@@ -61,7 +61,7 @@ S2 is useful here for discovery — broad coverage, returns external IDs quickly
 
 `fetch --json <ID>` returns S2 venue hints and external IDs. These hints need confirmation from more authoritative sources:
 
-- **Curated DB** (CS: `search dblp "<exact title>"`) — if DBLP lists it under a venue, it's formally published there.
+- **Curated DB** (CS: DBLP) — if DBLP lists it under a venue, it's formally published there. Try all available methods (title search, key, DOI) — published titles may differ from arXiv titles.
 - **Review platform** (`search openreview "<exact title>"`) — confirms acceptance decisions directly. Check `invitation` field to distinguish workshop from main track.
 - **Publisher page** — presence in ACL Anthology, ACM DL, PMLR, etc. is definitive.
 
