@@ -20,6 +20,33 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that gener
 
 Google Scholar and Semantic Scholar would both give you arXiv 2023 for this paper. It's ICLR 2024.
 
+When something is ambiguous, it stops and asks:
+
+```
+> /make-bib "Scaling Data-Constrained Language Models"
+
+? This paper appears in two venues:
+  1. NeurIPS 2023 (main conference)
+  2. NeurIPS 2023 Workshop on Instruction Tuning
+  Which version are you citing?
+
+> 1
+
+% source: dblp:conf/neurips/MuennighoffRWS23 via dblp
+@inproceedings{muennighoff2023scaling,
+  author    = {Niklas Muennighoff and Alexander M. Rush
+               and Boaz Barak and Teven Le Scao
+               and Aleksandra Piktus and Nouamane Tazi
+               and Sampo Pyysalo and Thomas Wolf
+               and Colin Raffel},
+  title     = {Scaling Data-Constrained Language Models},
+  booktitle = {NeurIPS},
+  year      = {2023},
+}
+```
+
+A CLI tool would silently pick one or fail. make-bib is a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code), so it can stop mid-workflow, ask you a question, understand your answer, and continue — the same way a knowledgeable colleague would.
+
 ## Two halves of citation
 
 Citation work has a mechanical half and a judgment half.
@@ -36,7 +63,7 @@ Citation work has a mechanical half and a judgment half.
 - Never decides which version is "correct"
 - Never auto-fixes entries
 - Never renders a PASS/FAIL verdict
-- Asks you when multiple candidates exist or venue is ambiguous
+- Stops and asks you: "workshop or main track?", "two venues found — which one?", "this looks like a preprint but has a DOI — proceed?"
 
 > The boundary is strict. Everything rule-based is automated. Everything that requires judgment is yours.
 
@@ -50,18 +77,18 @@ Input: paper ID, title, or abbreviation
     │  Semantic Scholar → external IDs        │
     │  (DOI, DBLP key, ACL ID, arXiv ID)     │
     └────────────────────────┬───────────────┘
-                             │  automatic
+                             │
          ┌─ Verify status ───┤
          │  DBLP / OpenReview / publisher page │
          │  → published or preprint?           │
          └───────────────────┬────────────────┘
-                             │  automatic
-         ┌─ Fetch BibTeX ────┤
-         │  Tier 1: ACL Anthology, PMLR       │
-         │  Tier 2: DBLP, CrossRef             │
-         │  Tier 3: arXiv (preprint only)      │
-         └───────────────────┬────────────────┘
-                             │  automatic
+                             │
+         ┌─ Fetch BibTeX ────┤               ambiguous?
+         │  Tier 1: ACL Anthology, PMLR  ──────→ asks you
+         │  Tier 2: DBLP, CrossRef             (multiple candidates,
+         │  Tier 3: arXiv (preprint only)       workshop vs main,
+         └───────────────────┬────────────────┘ venue unclear)
+                             │
          ┌─ Format ──────────┤
          │  Apply bibstyle.toml                │
          │  (key, venue, fields, authors)      │
@@ -70,8 +97,6 @@ Input: paper ID, title, or abbreviation
                              ▼
                         You review.
 ```
-
-When something is ambiguous — multiple candidates, unclear venue, workshop vs main track — make-bib stops and asks.
 
 ## Usage
 
