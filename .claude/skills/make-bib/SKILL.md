@@ -32,9 +32,14 @@ For deeper background on source characteristics, see `${CLAUDE_SKILL_DIR}/citati
 
 ## Workflow
 
+Every step is mandatory. Skipping any step is a failure.
+
 ### 0. Check for `bibstyle.toml`
 
-MUST run before any other step. Look for `bibstyle.toml` in the working directory. If absent, MUST `AskUserQuestion` whether to (1) use the defaults from the schema section below, or (2) customize specific settings. Do not skip this step.
+MUST run before any other step. Look for `bibstyle.toml` in the working directory.
+
+- **Found** → read it and apply. Proceed to step 1.
+- **Not found** → MUST stop and `AskUserQuestion` whether to (1) use the defaults from the schema section below, or (2) customize specific settings. Do not proceed to step 1 until the user answers.
 
 ### 1. Find the paper
 
@@ -48,6 +53,8 @@ ID input → `fetch`. Title/abbreviation → `search s2` → get IDs → `fetch`
 
 S2 is useful here for discovery — broad coverage, returns external IDs quickly. But S2 metadata (venue names, dates) is unreliable and must not carry over to later steps.
 
+**Output**: log paper title and collected IDs.
+
 ### 2. Determine publication status
 
 **Goal**: know whether the paper is formally published, and at which venue — or whether it remains a preprint.
@@ -59,6 +66,8 @@ S2 is useful here for discovery — broad coverage, returns external IDs quickly
 - **Publisher page** — presence in ACL Anthology, ACM DL, PMLR, etc. is definitive.
 
 No venue confirmed → treat as arXiv preprint.
+
+**Output**: log `status: published at {venue}` or `status: preprint`.
 
 ### 3. Get BibTeX
 
