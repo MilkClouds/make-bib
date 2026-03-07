@@ -1,0 +1,21 @@
+{
+  "name": "make-bib",
+  "owner": {
+    "name": "MilkClouds"
+  },
+  "metadata": {
+    "description": "Generate accurate BibTeX from authoritative sources",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "make-bib",
+      "description": "Generate accurate BibTeX from authoritative sources (CrossRef, DBLP, arXiv)",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./.claude/skills/make-bib"
+      ]
+    }
+  ]
+}

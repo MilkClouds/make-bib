@@ -142,13 +142,15 @@ Input: paper ID, title, or abbreviation
 
 This repo is a [Claude Code skill](https://code.claude.com/docs/en/skills) — a set of instructions and scripts that Claude Code loads when you type `/make-bib`.
 
-```bash
-npx skills add MilkClouds/make-bib -a claude-code
+In Claude Code, run:
+
+```
+/plugin marketplace add MilkClouds/make-bib
 ```
 
-Or manually: clone this repo into `.claude/skills/make-bib` (project-level) or `~/.claude/skills/make-bib` (global).
+Then select `Browse and install plugins` → `make-bib` → `Install now`.
 
-After installation, open Claude Code and type `/make-bib` — it will be recognized automatically.
+Or manually: clone this repo into `.claude/skills/make-bib` (project-level) or `~/.claude/skills/make-bib` (global).
 
 ## Usage
 
