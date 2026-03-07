@@ -141,11 +141,12 @@ class PaperId:
         arxiv:2010.11929
         doi:10.18653/v1/N19-1423
         openreview:rsHxs0YDor
+        dblp:conf/rss/Schuppe0LT23
     """
 
-    TYPES = ("arxiv", "doi", "openreview")
+    TYPES = ("arxiv", "doi", "openreview", "dblp")
 
-    type: Literal["arxiv", "doi", "openreview"]
+    type: Literal["arxiv", "doi", "openreview", "dblp"]
     value: str
 
     @classmethod
@@ -174,6 +175,8 @@ class PaperId:
                 return f"DOI:{self.value}"
             case "openreview":
                 return f"URL:https://openreview.net/forum?id={self.value}"
+            case "dblp":
+                return f"DBLP:{self.value}"
 
     def to_ids(self) -> dict[str, str | None]:
         """Extract known IDs directly from the parsed input (no API call)."""
@@ -191,6 +194,8 @@ class PaperId:
                     ids["acl_id"] = m.group(1)
             case "openreview":
                 ids["openreview_id"] = self.value
+            case "dblp":
+                ids["dblp_key"] = self.value
         return ids
 
 
@@ -1159,7 +1164,7 @@ app = typer.Typer(
 
 @app.command()
 def fetch(
-    paper_id: Annotated[str, typer.Argument(help="arxiv:ID, doi:ID, or openreview:ID")],
+    paper_id: Annotated[str, typer.Argument(help="arxiv:ID, doi:ID, dblp:KEY, or openreview:ID")],
     json_output: Annotated[bool, typer.Option("--json", help="output as JSON array with _meta per source")] = False,
     sources: Annotated[Optional[str], typer.Option(help="comma-separated list of sources (default: all)")] = None,
     raw: Annotated[Optional[FetchSource], typer.Option(help="full unfiltered API response from one source")] = None,
