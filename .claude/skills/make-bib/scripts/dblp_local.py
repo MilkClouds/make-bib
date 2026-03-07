@@ -368,18 +368,33 @@ def _load_db() -> dict[str, str]:
     return db
 
 
-def search(title: str) -> dict[str, Any] | None:
+def search(title: str, max_results: int = 5) -> list[dict[str, Any]]:
     """Search local DBLP database by title.
 
-    Returns structured dict with keys: title, venue, year, key, authors, bibtex.
-    Returns None if not found.
+    Tries exact normalized match first (returns single-element list),
+    then falls back to substring match (returns up to max_results candidates
+    sorted by key length, shortest first).
+
+    Returns list of structured dicts with keys: title, venue, year, key, authors, bibtex.
+    Returns empty list if not found.
     """
     db = _load_db()
     norm = normalize_title(title)
+
+    # Exact match (O(1))
     entry = db.get(norm)
-    if entry is None:
-        return None
-    return _structured_from_bibtex(entry)
+    if entry is not None:
+        return [_structured_from_bibtex(entry)]
+
+    # Substring match: find entries whose key contains the query
+    if len(norm) < 10:
+        return []  # too short, would match too many
+    matches = [(k, v) for k, v in db.items() if norm in k]
+    if not matches:
+        return []
+    # Sort by key length (shortest = closest match), return top N
+    matches.sort(key=lambda x: len(x[0]))
+    return [_structured_from_bibtex(v) for _, v in matches[:max_results]]
 
 
 # -- CLI --
@@ -411,10 +426,11 @@ def cli_sync(
 def cli_search(
     title: Annotated[str, typer.Argument(help="Paper title to search for")],
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    max_results: Annotated[int, typer.Option("--max", "-n", help="Max substring match results")] = 5,
 ) -> None:
-    """Search local database by title (exact normalized match)."""
-    result = search(title)
-    if result is None:
+    """Search local database by title."""
+    results = search(title, max_results=max_results)
+    if not results:
         if json_output:
             print(json.dumps({"status": "no_match", "query": title, "normalized": normalize_title(title)}))
         else:
@@ -424,9 +440,12 @@ def cli_search(
         raise typer.Exit(1)
 
     if json_output:
-        print(json.dumps({"status": "ok", "query": title, **result}))
+        print(json.dumps({"status": "ok", "query": title, "results": results}))
     else:
-        print(result["bibtex"])
+        for r in results:
+            print(r["bibtex"])
+            if len(results) > 1:
+                print()
 
 
 @app.command("stats")

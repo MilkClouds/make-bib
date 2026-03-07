@@ -56,12 +56,12 @@ def _get_dblp_local():
     return _dblp_local
 
 
-def _dblp_local_search(title: str) -> dict[str, Any] | None:
-    """Search local DBLP DB by title. Returns structured hit or None."""
+def _dblp_local_search(title: str) -> list[dict[str, Any]]:
+    """Search local DBLP DB by title. Returns list of structured hits."""
     try:
         return _get_dblp_local().search(title)
     except (ImportError, Exception):
-        return None
+        return []
 
 
 # =============================================================================
@@ -277,8 +277,9 @@ def fetch_dblp(client: httpx.Client, dblp_key: str, *, raw: bool = False, title:
     """Fetch DBLP record. Tries local DB by title first, then .bib URL by key."""
     # Try local DB by title if available (more reliable than key from S2)
     if title:
-        local = _dblp_local_search(title)
-        if local:
+        hits = _dblp_local_search(title)
+        if len(hits) == 1:
+            local = hits[0]
             return {
                 "source": "dblp",
                 "request": {"method": "local_db", "title": title},
@@ -448,14 +449,14 @@ def _extract_paper_id_from_ee(ee: str | None) -> str | None:
 def search_dblp(client: httpx.Client, title: str) -> SourceData:
     """Search DBLP by title. Tries local DB first, then falls back to API."""
     # Try local DB first
-    local = _dblp_local_search(title)
-    if local:
+    hits = _dblp_local_search(title)
+    if hits:
         return {
             "source": "dblp",
             "request": {"method": "local_db"},
             "status": "ok",
             "match_type": "local",
-            "response": {"query": title, "total": 1, "hits": [local]},
+            "response": {"query": title, "total": len(hits), "hits": hits},
         }
 
     url = "https://dblp.org/search/publ/api"
