@@ -1,215 +1,127 @@
-# bibtools
+# make-bib
 
-**Automated bibtex verification tool** — validate and fetch bibtex entries from official sources (CrossRef, DBLP, arXiv).
+**All you need is the final look.**
 
-## Why?
-
-**Google Scholar and Semantic Scholar have errors across all fields** (tested on [13 papers](comparison.md)):
-
-| | GS | S2 | bibtools |
-|---|---|---|---|
-| venue | 6/13 wrong (arXiv) | 7/13 wrong (arXiv) | 1/13 wrong* |
-| year | 1/13 wrong | 5/13 wrong | ✓ |
-| title | Lowercases acronyms | ✓ | ✓ |
-| author | Truncates ("and others") | Abbreviates, missing/extra | ✓ |
-
-\* FLOWER (CoRL 2025) — too recent for DBLP/S2 to have updated
-
-**Official sources are the best available baseline**, but they can still contain errors. bibtools gives you a strict, transparent workflow and an interactive review step when data conflicts.
-
-**bibtools matches official sources** by fetching from CrossRef/DBLP/arXiv directly:
-
-| Paper | Venue | GS | S2 | Official | bibtools |
-|-------|-------|:--:|:--:|:--------:|:--------:|
-| ResNet | CVPR 2016 | ✓ | ✗ year | ✓ | ✓ |
-| Attention Is All You Need | NeurIPS 2017 | ✓ | ✓ | ✓ | ✓ |
-| DiT | ICCV 2023 | ✓ | ✗ year | ✓ | ✓ |
-| StreamingLLM | ICLR 2024 | ✗ arXiv | ✗ arXiv | ✓ | ✓ |
-| UP-VLA | ICML 2025 | ✗ arXiv | ✗ arXiv | ✓ | ✓ |
-| Sliding Windows Are Not the End | ACL 2025 | ✓ | ✗ arXiv | ✓ | ✓ |
-| FLOWER | CoRL 2025 | ✗ arXiv | ✗ arXiv | ✓ | ✗ arXiv |
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that generates BibTeX from authoritative sources.
 
 ```
-$ bibtools fetch ARXIV:2106.09685   # LoRA
-Source: dblp | Venue: ICLR | Year: 2022
+> /make-bib StreamingLLM
+
+% source: dblp:conf/iclr/XiaoTCHL24 via dblp
+@inproceedings{xiao2024streamingllm,
+  author    = {Guangxuan Xiao and Yuandong Tian and Beidi Chen
+               and Song Han and Mike Lewis},
+  title     = {Efficient Streaming Language Models
+               with Attention Sinks},
+  booktitle = {ICLR},
+  year      = {2024},
+}
 ```
 
-→ [Full comparison](comparison.md)
+Google Scholar and Semantic Scholar would both give you arXiv 2023 for this paper. It's ICLR 2024.
 
-## What it does
+## Two halves of citation
 
-1. **fetch** - Get bibtex from paper ID (arXiv, DOI, etc.)
-2. **search** - Search papers by title and generate bibtex (use with caution)
-3. **resolve** - Add `% paper_id:` comments to a .bib file (auto-match + confidence)
-4. **verify** - Verify existing .bib entries (no modifications)
-5. **review** - Interactively apply fixes for mismatches
+Citation work has a mechanical half and a judgment half.
 
-## How it works
+**Mechanical** — which source to trust, how to fetch metadata, what fields to include, how to format them. These are rule-based and tedious. make-bib handles them entirely:
 
-### Resolve
+- Source selection per paper (ACL Anthology > PMLR > DBLP > CrossRef > arXiv)
+- Metadata fetching from 6+ authoritative databases
+- Entry type, key style, venue abbreviation, field filtering
+- Local DBLP database for instant offline lookup (~40 conferences)
 
-```
-bibtools resolve main.bib
-        ↓
-If % paper_id exists → skip
-Else:
-  doi field → DOI:... (confidence 1.00)
-  eprint field → ARXIV:... (confidence 1.00)
-  title search → best match (confidence = title similarity)
-        ↓
-Write % paper_id comment
-```
+**Judgment** — which version to cite, conference vs journal vs preprint, workshop vs main track, what to do when sources disagree. These require human context that no tool can reliably provide. make-bib does not touch them:
 
-### Verify
+- Never decides which version is "correct"
+- Never auto-fixes entries
+- Never renders a PASS/FAIL verdict
+- Asks you when multiple candidates exist or venue is ambiguous
+
+> The boundary is strict. Everything rule-based is automated. Everything that requires judgment is yours.
+
+## Workflow
 
 ```
-bibtools verify main.bib
-        ↓
-Use % paper_id comments only
-        ↓
-Semantic Scholar → Resolve to DOI/arXiv ID + venue
-        ↓
-    ┌─────────────────────────────────────────┐
-    │ if DOI exists       → CrossRef          │
-    │ elif venue != arXiv → DBLP              │
-    │ elif venue == arXiv → arXiv             │
-    │ else                → FAIL              │
-    └─────────────────────────────────────────┘
-        ↓
-Cross-check with arXiv (if arXiv ID exists, --no-arxiv-check to disable)
-  → FAIL if authors mismatch between source and arXiv
-        ↓
-Compare with existing entry → PASS / WARNING / FAIL
+Input: paper ID, title, or abbreviation
+         │
+         ▼
+    ┌─ Resolve ──────────────────────────────┐
+    │  Semantic Scholar → external IDs        │
+    │  (DOI, DBLP key, ACL ID, arXiv ID)     │
+    └────────────────────────┬───────────────┘
+                             │  automatic
+         ┌─ Verify status ───┤
+         │  DBLP / OpenReview / publisher page │
+         │  → published or preprint?           │
+         └───────────────────┬────────────────┘
+                             │  automatic
+         ┌─ Fetch BibTeX ────┤
+         │  Tier 1: ACL Anthology, PMLR       │
+         │  Tier 2: DBLP, CrossRef             │
+         │  Tier 3: arXiv (preprint only)      │
+         └───────────────────┬────────────────┘
+                             │  automatic
+         ┌─ Format ──────────┤
+         │  Apply bibstyle.toml                │
+         │  (key, venue, fields, authors)      │
+         └───────────────────┬────────────────┘
+                             │
+                             ▼
+                        You review.
 ```
 
-### Review
+When something is ambiguous — multiple candidates, unclear venue, workshop vs main track — make-bib stops and asks.
+
+## Usage
 
 ```
-bibtools review main.bib
-        ↓
-Run verify
-        ↓
-Show mismatches and prompt per-field fixes
-        ↓
-Write updated .bib
+> /make-bib arxiv:2106.09685
+> /make-bib doi:10.1109/CVPR.2016.90
+> /make-bib "Attention Is All You Need"
+> /make-bib LoRA
 ```
 
-**Data sources (Single Source of Truth):**
+## Configuration
 
-| Condition | Source |
-|-----------|--------|
-| DOI exists | **CrossRef** |
-| No DOI, venue != arXiv | **DBLP** |
-| No DOI, venue == arXiv | **arXiv** |
+Create `bibstyle.toml` in your project root:
 
-Semantic Scholar is used for identifier resolution only, not as a metadata source.
+```toml
+[sources]
+verify = ["s2", "dblp", "openreview"]
+bibtex = ["acl_anthology", "pmlr", "dblp", "crossref", "arxiv"]
 
-## Is it reliable?
+[fields]
+conference = ["title", "author", "booktitle", "year"]
+journal = ["title", "author", "journal", "year", "volume", "number"]
 
-bibtools does **NOT generate or guess metadata**.
-It fetches data from official sources only:
-- **CrossRef**: Official DOI registry with publisher-submitted metadata.
-- **DBLP**: Computer science bibliography, used for venues without DOI (e.g., ICLR).
-- **arXiv**: Used for preprints.
+[venue]
+style = "abbreviated"       # or "full"
+proceedings_prefix = false   # true → "Proceedings of NeurIPS"
 
-Semantic Scholar is used only for identifier resolution, not as a metadata source.
+[key]
+style = "lastname_year"     # "lastname_year", "lastname_venue_year", "acl"
 
-→ [Comparison with Google Scholar/Official sources](comparison.md)
+[arxiv]
+entry_type = "article"
+journal_format = "arXiv preprint arXiv:{id}"
+```
 
----
+## Local DBLP database
 
-## Installation
+Bundled local database covers ~40 CS conferences (2000–2026) for instant title-based lookup without hitting the DBLP API. Inspired by [rebiber](https://github.com/yuchenlin/rebiber).
 
 ```bash
-uv tool install git+https://github.com/MilkClouds/bibtools
+uv run scripts/dblp_local.py sync                    # update all
+uv run scripts/dblp_local.py sync -c neurips -y 2024  # specific venue/year
+uv run scripts/dblp_local.py stats                    # show coverage
 ```
 
-## Quick Start
+## Design rationale
 
-```bash
-bibtools fetch 2106.09685                  # LoRA - auto-detects arXiv ID, gets ICLR 2022 from DBLP
-bibtools resolve main.bib                   # Add % paper_id comments (auto-match + confidence in stdout)
-bibtools verify main.bib                    # Verify existing entries (no modifications)
-bibtools review main.bib                    # Interactive fix for mismatches
-bibtools search "Attention Is All You Need"  # Search (use with caution)
-```
+No prominent researcher has published a guide on citation management — because it's a craft skill, not an algorithm. The universal pattern is: copy from an authoritative source, manually verify, apply conventions consistently. make-bib automates steps 1 and 3. Step 2 is yours.
 
-## Commands
+## Related projects
 
-### resolve
-
-Add `% paper_id:` comments to entries by ID fields or title matching.
-
-```bash
-bibtools resolve main.bib
-bibtools resolve main.bib --min-confidence 0.90
-bibtools resolve main.bib --dry-run
-```
-
-### verify
-
-Verifies bibtex entries against official metadata from CrossRef/DBLP/arXiv. **Does not modify files.**
-
-```bash
-bibtools verify main.bib
-bibtools verify main.bib --reverify
-```
-
-### review
-
-Interactively fix mismatches detected by `verify`.
-
-```bash
-bibtools review main.bib
-bibtools review main.bib --verified-via "human(Alice)"
-bibtools review main.bib --include-warnings
-```
-
-### fetch
-
-Fetches bibtex by paper ID. Metadata from CrossRef (DOI) → DBLP → arXiv.
-
-```bash
-bibtools fetch 2106.09685                    # LoRA - DBLP (ICLR 2022)
-bibtools fetch DOI:10.18653/v1/N18-3011      # CrossRef (ACL)
-bibtools fetch DOI:10.1109/CVPR.2016.90      # CrossRef (CVPR)
-bibtools fetch ARXIV:2303.08774              # arXiv (GPT-4 - preprint)
-```
-
-### search
-
-Searches papers and generates bibtex. **Use with caution** - results may not match your intended paper.
-
-```bash
-bibtools search "Attention Is All You Need" --limit 3
-```
-
-## Verification Strictness
-
-bibtools is **strict by design** — it rejects abbreviations and ambiguous matches:
-
-| Case | Result | Reason |
-|------|--------|--------|
-| `Smith, John` vs `John Smith` | ✓ PASS | Format difference only |
-| `{GPT}` vs `GPT` | ⚠ WARNING | LaTeX braces difference |
-| `M. Posner` vs `Michael Posner` | ✗ FAIL | Abbreviation = content change |
-| `NeurIPS` vs `Neural Information Processing Systems` | ⚠ WARNING | Known alias |
-
-→ [Full verification rules](FAQ.md#field-comparison-rules)
-
-## Supported Paper IDs
-
-- `ARXIV:2106.15928`
-- `DOI:10.18653/v1/N18-3011`
-- `CorpusId:215416146`
-- `ACL:W12-3903`
-- `PMID:19872477`
-
-## More Information
-
-→ [FAQ & Troubleshooting](FAQ.md) — Limitations, verification behavior, options reference
-
-## Related Projects
-
-- [**rebiber**](https://github.com/yuchenlin/rebiber) — A tool for normalizing bibtex with official info (DBLP, ACL anthology).
-- [**SimBiber**](https://github.com/MLNLP-World/SimBiber) — A tool for simplifying bibtex with official info.
+- [**rebiber**](https://github.com/yuchenlin/rebiber) — Normalizes arXiv BibTeX with DBLP/ACL data. make-bib's local database is inspired by rebiber's approach.
+- [**SimBiber**](https://github.com/MLNLP-World/SimBiber) — Simplifies BibTeX to minimal fields.

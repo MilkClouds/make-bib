@@ -1,0 +1,11 @@
+[project]
+name = "make-bib"
+version = "0.1.0"
+description = "BibTeX from authoritative sources — a Claude Code skill"
+requires-python = ">=3.10"
+
+[dependency-groups]
+dev = ["ruff"]
+
+[tool.ruff]
+line-length = 119
