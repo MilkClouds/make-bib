@@ -1,4 +1,4 @@
-# make-bib: All you need is the final look
+# make-bib: Human-in-the-loop BibTeX fetch from the authoritative source
 
 A [Claude Code skill](https://code.claude.com/docs/en/skills) that generates BibTeX from authoritative sources.
 
