@@ -133,6 +133,23 @@ Input: paper ID, title, or abbreviation
                         You review.
 ```
 
+## Prerequisites
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — Anthropic's CLI for Claude. This skill runs inside Claude Code, not as a standalone tool.
+- Python 3.10+ and [uv](https://docs.astral.sh/uv/) (for the bundled DBLP local database scripts)
+
+## Installation
+
+This repo is a [Claude Code skill](https://code.claude.com/docs/en/skills) — a set of instructions and scripts that Claude Code loads when you type `/make-bib`.
+
+```bash
+npx skills add MilkClouds/make-bib -a claude-code
+```
+
+Or manually: clone this repo into `.claude/skills/make-bib` (project-level) or `~/.claude/skills/make-bib` (global).
+
+After installation, open Claude Code and type `/make-bib` — it will be recognized automatically.
+
 ## Usage
 
 ```
