@@ -34,10 +34,15 @@ For deeper background on source characteristics, see `${CLAUDE_SKILL_DIR}/citati
 
 Every step is mandatory. Skipping any step is a failure.
 
-### 0. Check for `bibstyle.toml`
+### 0. Check prerequisites
 
+**`bibstyle.toml`**:
 - **Found** → read and apply. All formatting decisions (venue style, fields, key style) come from this file.
 - **Not found** → `AskUserQuestion` with two options: (1) create with defaults from schema section below, (2) customize specific settings. Write `bibstyle.toml` with the chosen configuration before proceeding to step 1.
+
+**`SEMANTIC_SCHOLAR_API_KEY`**:
+- **Set** → proceed.
+- **Not set** → `AskUserQuestion` to request the key (via `export SEMANTIC_SCHOLAR_API_KEY=...` or in a `.env` file in the working directory). If the user declines, proceed (pass `--allow-no-s2-key` as needed) but strongly recommend setting it: without the key, `fetch`/`search s2` are blocked by default, and unauthenticated requests share a global pool with heavy throttling (3s fallback interval vs 1 req/s authenticated).
 
 ### 1. Find the paper
 
