@@ -18,7 +18,7 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that gener
 }
 ```
 
-Google Scholar and Semantic Scholar would both give you arXiv 2023 for this paper. It's ICLR 2024.
+Google Scholar would give you arXiv 2023 for this paper. It's ICLR 2024.
 
 When something is ambiguous, it stops and asks:
 
