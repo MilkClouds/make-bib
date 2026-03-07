@@ -56,11 +56,17 @@ When something is ambiguous, it stops and asks — then goes deep to find the ri
 
 DBLP indexes this paper under its arXiv title ("Training Compute-Optimal Large Language Models"), but NeurIPS published it under a **different title** ("An empirical analysis of compute-optimal large language model training"). Opus 4.6 with make-bib exhausts DBLP lookups, falls through to the NeurIPS proceedings page, and uses the published title.
 
-## Limitations
+## Why this exists (and its limitations)
 
-make-bib is an LLM skill. It fetches from authoritative sources and follows rules, but it can still pick the wrong source, misformat fields, or hallucinate under edge cases. Always review the output before citing.
+LLMs hallucinate citations. This is not hypothetical — it is happening at scale in published research:
 
-Designed for and tested with Claude Opus 4.6. Correct behavior with lower-tier models (Sonnet, Haiku) is not guaranteed.
+- **NeurIPS 2025**: [100+ hallucinated citations found across 53 accepted papers](https://fortune.com/2026/01/21/neurips-ai-conferences-research-papers-hallucinations/) that passed 3+ peer reviewers. Fabricated authors, fake venues, dead URLs.
+- **ACL/EMNLP 2025**: [~300 papers with hallucinated references](https://arxiv.org/abs/2601.18724), with EMNLP 2025 alone accounting for 154. The number jumped sharply from 20 in 2024 to 275 in 2025.
+- **arXiv trend**: [Analysis of 2.2M citations](https://spylab.ai/blog/hallucinations/) shows hallucinated references accelerating from early 2025, with LLMs blending real papers into chimeric non-existent entries.
+
+The root cause: LLMs generate plausible-looking citations from statistical patterns, not from actual sources. make-bib avoids this by never generating metadata — every field comes from a publisher, curated database, or API response, with the source URL attached.
+
+That said, make-bib is still an LLM skill. It can pick the wrong source, misformat fields, or fail under edge cases. Always review the output before citing. Designed for and tested with Claude Opus 4.6 — correct behavior with lower-tier models is not guaranteed.
 
 ## Sources
 
@@ -71,14 +77,16 @@ Designed for and tested with Claude Opus 4.6. Correct behavior with lower-tier m
 | ACL Anthology | ACL, EMNLP, NAACL, and NLP workshops |
 | PMLR | ICML, AISTATS, COLT, UAI, CoRL, ALT |
 | arXiv | Preprints (when no formal venue is confirmed) |
+| Other publishers | NeurIPS proceedings, ACM DL, IEEE Xplore, Springer, etc. |
 
 **Tier 2 — Curated DB** (normalized, reliable):
 
 | Source | Scope |
 |---|---|
 | DBLP | ~40 CS conferences via local database (includes IEEE, ACM venues) |
+| Others by field | INSPIRE-HEP (physics), ADS (astronomy), PubMed (medicine) |
 
-**Tier 3 — Fallback:**
+**Tier 3 — Fallback** (requires `⚠ UNVERIFIED` annotation):
 
 | Source | Scope |
 |---|---|
@@ -93,26 +101,30 @@ Entries from Tier 3 sources are labeled `⚠ UNVERIFIED` in the output. If you s
 Input: paper ID, title, or abbreviation
          │
          ▼
-    ┌─ Resolve ──────────────────────────────┐
-    │  Semantic Scholar → external IDs        │
-    │  (DOI, DBLP key, ACL ID, arXiv ID)     │
-    └────────────────────────┬───────────────┘
+    ┌─ bibstyle.toml ───────────────────────┐
+    │  Found → apply. Not found → ask you   │
+    │  (defaults or customize), create file │
+    └────────────────────────┬──────────────┘
                              │
-         ┌─ Verify status ───┤
-         │  DBLP / OpenReview / publisher page │
-         │  → published or preprint?           │
-         └───────────────────┬────────────────┘
+    ┌─ Resolve ──────────────┤               ambiguous?
+    │  Semantic Scholar → external IDs    ──────→ asks you
+    │  (DOI, DBLP key, ACL ID, arXiv ID)     (multiple candidates,
+    └────────────────────────┬──────────────┘  workshop vs main,
+                             │                 venue unclear)
+    ┌─ Verify status ────────┤
+    │  DBLP (title/key/DOI) / OpenReview /  │
+    │  publisher page → published or preprint│
+    └────────────────────────┬──────────────┘
                              │
-         ┌─ Fetch BibTeX ────┤               ambiguous?
-         │  Tier 1: Publisher, arXiv       ──────→ asks you
-         │  Tier 2: DBLP                       (multiple candidates,
-         │  Tier 3: CrossRef, OpenReview        workshop vs main,
-         └───────────────────┬────────────────┘ venue unclear)
+    ┌─ Fetch BibTeX ─────────┤
+    │  Tier 1 → 2 → 3, exhaust each tier   │
+    │  before falling back                  │
+    └────────────────────────┬──────────────┘
                              │
-         ┌─ Format ──────────┤
-         │  Apply bibstyle.toml                │
-         │  (key, venue, fields, authors)      │
-         └───────────────────┬────────────────┘
+    ┌─ Validate & format ────┤
+    │  Apply bibstyle.toml, run checklist   │
+    │  (type, venue, fields, key, source)   │
+    └────────────────────────┬──────────────┘
                              │
                              ▼
                         You review.
@@ -157,10 +169,6 @@ uv run scripts/dblp_local.py sync                    # update all
 uv run scripts/dblp_local.py sync -c neurips -y 2024  # specific venue/year
 uv run scripts/dblp_local.py stats                    # show coverage
 ```
-
-## Design rationale
-
-No prominent researcher has published a guide on citation management — because it's a craft skill, not an algorithm. The universal pattern is: copy from an authoritative source, manually verify, apply conventions consistently. make-bib automates steps 1 and 3. Step 2 is yours.
 
 ## Related projects
 
