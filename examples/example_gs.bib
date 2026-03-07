@@ -1,278 +1,96 @@
-% Google Scholar BibTeX examples — diverse venues, fields, publishers
-% Sorted by year. GS-style quirks preserved (wrong venues, missing DOIs, etc.)
-
-% --- CHI 2008 (ACM, HCI) ---
-@inproceedings{kittur2008crowdsourcing,
-  title     = {Crowdsourcing user studies with Mechanical Turk},
-  author    = {Kittur, Aniket and Chi, Ed H and Suh, Bongwon},
-  booktitle = {Proceedings of the SIGCHI conference on human factors in computing systems},
-  pages     = {453--456},
-  year      = {2008}
-}
-
-% --- JMLR 2011 (journal, ML infrastructure) ---
-@article{pedregosa2011scikit,
-  title     = {Scikit-learn: Machine learning in Python},
-  author    = {Pedregosa, Fabian and Varoquaux, Ga{\"e}l and Gramfort, Alexandre and Michel, Vincent and Thirion, Bertrand and Grisel, Olivier and Blondel, Mathieu and Prettenhofer, Peter and Weiss, Ron and Dubourg, Vincent and others},
-  journal   = {the Journal of machine Learning research},
-  volume    = {12},
-  pages     = {2825--2830},
-  year      = {2011},
-  publisher = {JMLR. org}
-}
-
-% --- NSDI 2012 (USENIX, systems) ---
-@inproceedings{zaharia2012resilient,
-  title     = {Resilient distributed datasets: A fault-tolerant abstraction for in-memory cluster computing},
-  author    = {Zaharia, Matei and Chowdhury, Mosharaf and Das, Tathagata and Dave, Ankur and Ma, Justin and McCauly, Murphy and Franklin, Michael J and Shenker, Scott and Stoica, Ion},
-  booktitle = {9th USENIX Symposium on Networked Systems Design and Implementation (NSDI 12)},
-  pages     = {15--28},
-  year      = {2012}
-}
-
-% --- OSDI 2012 → TOCS 2013 (ACM, distributed systems) ---
-@article{corbett2013spanner,
-  title     = {Spanner: Google's globally distributed database},
-  author    = {Corbett, James C and Dean, Jeffrey and Epstein, Michael and Fikes, Andrew and Frost, Christopher and Furman, JJ and Ghemawat, Sanjay and Gubarev, Andrey and Heiser, Christopher and Hochschild, Peter and others},
-  journal   = {ACM Transactions on Computer Systems (TOCS)},
-  volume    = {31},
-  number    = {3},
-  pages     = {1--22},
-  year      = {2013},
-  publisher = {ACM New York, NY, USA}
-}
-
-% --- NeurIPS 2014 (foundational ML) ---
-@inproceedings{goodfellow2014generative,
-  title     = {Generative adversarial nets},
-  author    = {Goodfellow, Ian and Pouget-Abadie, Jean and Mirza, Mehdi and Xu, Bing and Warde-Farley, David and Ozair, Sherjil and Courville, Aaron and Bengio, Yoshua},
-  booktitle = {Advances in neural information processing systems},
-  volume    = {27},
-  year      = {2014}
-}
-
-% --- EMNLP 2014 (ACL Anthology, NLP) ---
-@inproceedings{pennington2014glove,
-  title     = {Glove: Global vectors for word representation},
-  author    = {Pennington, Jeffrey and Socher, Richard and Manning, Christopher D},
-  booktitle = {Proceedings of the 2014 conference on empirical methods in natural language processing (EMNLP)},
-  pages     = {1532--1543},
-  year      = {2014}
-}
-
-% --- JMLR 2014 (journal, regularization) ---
-@article{srivastava2014dropout,
-  title     = {Dropout: a simple way to prevent neural networks from overfitting},
-  author    = {Srivastava, Nitish and Hinton, Geoffrey and Krizhevsky, Alex and Sutskever, Ilya and Salakhutdinov, Ruslan},
-  journal   = {The journal of machine learning research},
-  volume    = {15},
-  number    = {1},
-  pages     = {1929--1958},
-  year      = {2014},
-  publisher = {JMLR. org}
-}
-
-% --- ICML 2015 (PMLR, optimization) ---
-@inproceedings{ioffe2015batch,
-  title     = {Batch normalization: Accelerating deep network training by reducing internal covariate shift},
-  author    = {Ioffe, Sergey and Szegedy, Christian},
-  booktitle = {International conference on machine learning},
-  pages     = {448--456},
-  year      = {2015},
-  organization = {pmlr}
-}
-
-% --- MICCAI 2015 (Springer LNCS, medical imaging) ---
-@inproceedings{ronneberger2015u,
-  title        = {U-net: Convolutional networks for biomedical image segmentation},
-  author       = {Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
-  booktitle    = {Medical image computing and computer-assisted intervention--MICCAI 2015: 18th international conference, Munich, Germany, October 5-9, 2015, proceedings, part III 18},
-  pages        = {234--241},
-  year         = {2015},
-  organization = {Springer}
-}
-
-% --- SIGIR 2015 (ACM, information retrieval) ---
-@inproceedings{severyn2015learning,
-  title     = {Learning to rank short text pairs with convolutional deep neural networks},
-  author    = {Severyn, Aliaksei and Moschitti, Alessandro},
-  booktitle = {Proceedings of the 38th international ACM SIGIR conference on research and development in information retrieval},
-  pages     = {373--382},
-  year      = {2015}
-}
-
-% --- CVPR 2016 (IEEE, object detection) ---
-@inproceedings{redmon2016you,
-  title     = {You only look once: Unified, real-time object detection},
-  author    = {Redmon, Joseph and Divvala, Santosh and Girshick, Ross and Farhadi, Ali},
-  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
-  pages     = {779--788},
-  year      = {2016}
-}
-
-% --- KDD 2016 (ACM, data mining) ---
-@inproceedings{chen2016xgboost,
-  title     = {Xgboost: A scalable tree boosting system},
-  author    = {Chen, Tianqi and Guestrin, Carlos},
-  booktitle = {Proceedings of the 22nd acm sigkdd international conference on knowledge discovery and data mining},
-  pages     = {785--794},
-  year      = {2016}
-}
-
-% --- KDD 2016 (ACM, graph mining) ---
-@inproceedings{grover2016node2vec,
-  title     = {node2vec: Scalable feature learning for networks},
-  author    = {Grover, Aditya and Leskovec, Jure},
-  booktitle = {Proceedings of the 22nd ACM SIGKDD international conference on knowledge discovery and data mining},
-  pages     = {855--864},
-  year      = {2016}
-}
-
-% --- CCS 2016 (ACM, security/privacy) ---
-@inproceedings{abadi2016deep,
-  title     = {Deep learning with differential privacy},
-  author    = {Abadi, Martin and Chu, Andy and Goodfellow, Ian and McMahan, H Brendan and Mironov, Ilya and Talwar, Kunal and Zhang, Li},
-  booktitle = {Proceedings of the 2016 ACM SIGSAC conference on computer and communications security},
-  pages     = {308--318},
-  year      = {2016}
-}
-
-% --- OSDI 2016 (USENIX, ML systems) ---
-@inproceedings{abadi2016tensorflow,
-  title     = {TensorFlow: a system for large-scale machine learning},
-  author    = {Abadi, Mart{\'\i}n and Barham, Paul and Chen, Jianmin and Chen, Zhifeng and Davis, Andy and Dean, Jeffrey and Devin, Matthieu and Ghemawat, Sanjay and Irving, Geoffrey and Isard, Michael and others},
-  booktitle = {12th USENIX symposium on operating systems design and implementation (OSDI 16)},
-  pages     = {265--283},
-  year      = {2016}
-}
-
-% --- arXiv 2017 (arXiv-only, RL) ---
-@article{schulman2017proximal,
-  title   = {Proximal policy optimization algorithms},
-  author  = {Schulman, John and Wolski, Filip and Dhariwal, Prafulla and Radford, Alec and Klimov, Oleg},
-  journal = {arXiv preprint arXiv:1707.06347},
-  year    = {2017}
-}
-
-% --- ICLR 2018 (OpenReview, graph learning) ---
-@article{velickovic2018graph,
-  title   = {Graph attention networks},
-  author  = {Veli{\v{c}}kovi{\'c}, Petar and Cucurull, Guillem and Casanova, Arantxa and Romero, Adriana and Li{\`o}, Pietro and Bengio, Yoshua},
-  journal = {arXiv preprint arXiv:1710.10903},
-  year    = {2017}
-}
-
-% --- CVPR 2018 (IEEE, pose estimation) ---
-@inproceedings{guler2018densepose,
-  title     = {Densepose: Dense human pose estimation in the wild},
-  author    = {G{\"u}ler, R{\i}za Alp and Neverova, Natalia and Kokkinos, Iasonas},
-  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
-  pages     = {7297--7306},
-  year      = {2018}
-}
-
-% --- NAACL 2019 (ACL Anthology, NLP) ---
-@article{devlin2018bert,
-  title   = {Bert: Pre-training of deep bidirectional transformers for language understanding},
-  author  = {Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
-  journal = {arXiv preprint arXiv:1810.04805},
-  year    = {2018}
-}
-
-% --- ECCV 2020 (Springer, 3D vision) ---
-@inproceedings{mildenhall2021nerf,
-  title     = {Nerf: Representing scenes as neural radiance fields for view synthesis},
-  author    = {Mildenhall, Ben and Srinivasan, Pratul P and Tancik, Matthew and Barron, Jonathan T and Ramamoorthi, Ravi and Ng, Ren},
-  booktitle = {Communications of the ACM},
-  volume    = {65},
-  number    = {1},
-  pages     = {99--106},
-  year      = {2021}
-}
-
-% --- EMNLP Findings 2020 (ACL Anthology, code+NLP) ---
-@article{feng2020codebert,
-  title   = {Codebert: A pre-trained model for programming and natural languages},
-  author  = {Feng, Zhangyin and Guo, Daya and Tang, Duyu and Duan, Nan and Feng, Xiaocheng and Gong, Ming and Shou, Linjun and Qin, Bing and Liu, Ting and Jiang, Daxin and others},
-  journal = {arXiv preprint arXiv:2002.08155},
-  year    = {2020}
-}
-
-% --- ICML 2020 (PMLR, retrieval-augmented) ---
-@article{guu2020retrieval,
-  title   = {Retrieval augmented language model pre-training},
-  author  = {Guu, Kelvin and Lee, Kenton and Tung, Zora and Pasupat, Panupong and Chang, Mingwei},
-  journal = {International conference on machine learning},
-  pages   = {3929--3938},
-  year    = {2020},
-  publisher = {PMLR}
-}
-
-% --- ICLR 2021 (OpenReview, object detection) ---
-@article{zhu2020deformable,
-  title   = {Deformable detr: Deformable transformers for end-to-end object detection},
-  author  = {Zhu, Xizhou and Su, Weijie and Lu, Lewei and Li, Bin and Wang, Xiaogang and Dai, Jifeng},
-  journal = {arXiv preprint arXiv:2010.04159},
-  year    = {2020}
-}
-
-% --- ICML 2021 (PMLR, multimodal) ---
-@inproceedings{radford2021learning,
-  title        = {Learning transferable visual models from natural language supervision},
-  author       = {Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and others},
-  booktitle    = {International conference on machine learning},
-  pages        = {8748--8763},
-  year         = {2021},
-  organization = {PMLR}
-}
-
-% --- Nature 2021 (Nature, computational biology) ---
-@article{jumper2021highly,
-  title     = {Highly accurate protein structure prediction with AlphaFold},
-  author    = {Jumper, John and Evans, Richard and Pritzel, Alexander and Green, Tim and Figurnov, Michael and Ronneberger, Olaf and Tunyasuvunakool, Kathryn and Bates, Russ and {\v{Z}}{\'\i}dek, Augustin and Potapenko, Anna and others},
+% Google Scholar BibTeX examples (sorted by year)
+@article{lecun2015deep,
+  title     = {Deep learning},
+  author    = {LeCun, Yann and Bengio, Yoshua and Hinton, Geoffrey},
   journal   = {nature},
-  volume    = {596},
-  number    = {7873},
-  pages     = {583--589},
-  year      = {2021},
-  publisher = {Nature Publishing Group}
+  volume    = {521},
+  number    = {7553},
+  pages     = {436--444},
+  year      = {2015},
+  publisher = {Nature Publishing Group UK London}
 }
-
-% --- IJCV 2021 (Springer journal, tracking) ---
-@article{zhang2021fairmot,
-  title     = {Fairmot: On the fairness of detection and re-identification in multiple object tracking},
-  author    = {Zhang, Yifu and Wang, Chunyu and Wang, Xinggang and Zeng, Wenjun and Liu, Wenyu},
-  journal   = {International journal of computer vision},
-  volume    = {129},
-  pages     = {3069--3087},
-  year      = {2021},
-  publisher = {Springer}
+@inproceedings{he2016deep,
+  title     = {Deep residual learning for image recognition},
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  pages     = {770--778},
+  year      = {2016}
 }
-
-% --- arXiv 2022 (arXiv-only, AI safety) ---
-@article{bai2022constitutional,
-  title   = {Constitutional ai: Harmlessness from ai feedback},
-  author  = {Bai, Yuntao and Kadavath, Saurav and Kundu, Sandipan and Askell, Amanda and Kernion, Jackson and Jones, Andy and Chen, Anna and Goldie, Anna and Mirhoseini, Azalia and McKinnon, Cameron and others},
-  journal = {arXiv preprint arXiv:2212.08073},
+@article{vaswani2017attention,
+  title   = {Attention is all you need},
+  author  = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  journal = {Advances in neural information processing systems},
+  volume  = {30},
+  year    = {2017}
+}
+@article{hu2022lora,
+  title   = {Lora: Low-rank adaptation of large language models.},
+  author  = {Hu, Edward J and Shen, Yelong and Wallis, Phillip and Allen-Zhu, Zeyuan and Li, Yuanzhi and Wang, Shean and Wang, Lu and Chen, Weizhu and others},
+  journal = {ICLR},
+  volume  = {1},
+  number  = {2},
+  pages   = {3},
   year    = {2022}
 }
-
-% --- ACM TOG / SIGGRAPH 2023 (ACM, graphics) ---
-@article{kerbl20233d,
-  title     = {3d gaussian splatting for real-time radiance field rendering},
-  author    = {Kerbl, Bernhard and Kopanas, Georgios and Leimk{\"u}hler, Thomas and Drettakis, George},
-  journal   = {ACM Transactions on Graphics},
-  volume    = {42},
-  number    = {4},
-  pages     = {1--14},
-  year      = {2023},
-  publisher = {ACM New York, NY, USA}
+@article{hansen2022temporal,
+  title   = {Temporal difference learning for model predictive control},
+  author  = {Hansen, Nicklas and Wang, Xiaolong and Su, Hao},
+  journal = {arXiv preprint arXiv:2203.04955},
+  year    = {2022}
 }
-
-% --- arXiv 2023 (arXiv-only, sequence modeling) ---
-@article{gu2023mamba,
-  title   = {Mamba: Linear-time sequence modeling with selective state spaces},
-  author  = {Gu, Albert and Dao, Tri},
-  journal = {arXiv preprint arXiv:2312.00752},
+@inproceedings{peebles2023scalable,
+  title     = {Scalable diffusion models with transformers},
+  author    = {Peebles, William and Xie, Saining},
+  booktitle = {Proceedings of the IEEE/CVF international conference on computer vision},
+  pages     = {4195--4205},
+  year      = {2023}
+}
+@article{xiao2023efficient,
+  title   = {Efficient streaming language models with attention sinks},
+  author  = {Xiao, Guangxuan and Tian, Yuandong and Chen, Beidi and Han, Song and Lewis, Mike},
+  journal = {arXiv preprint arXiv:2309.17453},
   year    = {2023}
+}
+@article{kim2024openvla,
+  title   = {Openvla: An open-source vision-language-action model},
+  author  = {Kim, Moo Jin and Pertsch, Karl and Karamcheti, Siddharth and Xiao, Ted and Balakrishna, Ashwin and Nair, Suraj and Rafailov, Rafael and Foster, Ethan and Lam, Grace and Sanketi, Pannag and others},
+  journal = {arXiv preprint arXiv:2406.09246},
+  year    = {2024}
+}
+@article{reuss2025flower,
+  title   = {Flower: Democratizing generalist robot policies with efficient vision-language-action flow policies},
+  author  = {Reuss, Moritz and Zhou, Hongyi and R{\"u}hle, Marcel and Ya{\u{g}}murlu, {\"O}mer Erdin{\c{c}} and Otto, Fabian and Lioutikov, Rudolf},
+  journal = {arXiv preprint arXiv:2509.04996},
+  year    = {2025}
+}
+@article{koo2025hamlet,
+  title   = {HAMLET: Switch your Vision-Language-Action Model into a History-Aware Policy},
+  author  = {Koo, Myungkyu and Choi, Daewon and Kim, Taeyoung and Lee, Kyungmin and Kim, Changyeon and Seo, Younggyo and Shin, Jinwoo},
+  journal = {arXiv preprint arXiv:2510.00695},
+  year    = {2025}
+}
+@article{shi2025hi,
+  title   = {Hi robot: Open-ended instruction following with hierarchical vision-language-action models},
+  author  = {Shi, Lucy Xiaoyang and Ichter, Brian and Equi, Michael and Ke, Liyiming and Pertsch, Karl and Vuong, Quan and Tanner, James and Walling, Anna and Wang, Haohuan and Fusai, Niccolo and others},
+  journal = {arXiv preprint arXiv:2502.19417},
+  year    = {2025}
+}
+@inproceedings{liu2025sliding,
+  title     = {Sliding windows are not the end: Exploring full ranking with long-context large language models},
+  author    = {Liu, Wenhan and Ma, Xinyu and Zhu, Yutao and Zhao, Ziliang and Wang, Shuaiqiang and Yin, Dawei and Dou, Zhicheng},
+  booktitle = {Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages     = {162--176},
+  year      = {2025}
+}
+@article{zhang2025up,
+  title   = {Up-vla: A unified understanding and prediction model for embodied agent},
+  author  = {Zhang, Jianke and Guo, Yanjiang and Hu, Yucheng and Chen, Xiaoyu and Zhu, Xiang and Chen, Jianyu},
+  journal = {arXiv preprint arXiv:2501.18867},
+  year    = {2025}
+}
+@article{han2025robocerebra,
+  title   = {Robocerebra: A large-scale benchmark for long-horizon robotic manipulation evaluation},
+  author  = {Han, Songhao and Qiu, Boxiang and Liao, Yue and Huang, Siyuan and Gao, Chen and Yan, Shuicheng and Liu, Si},
+  journal = {arXiv preprint arXiv:2506.06677},
+  year    = {2025}
 }
