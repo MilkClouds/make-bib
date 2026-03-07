@@ -12,6 +12,10 @@
 Downloads conference proceedings BibTeX from DBLP's table-of-contents API,
 stores them as JSON keyed by normalized title for O(1) lookup.
 Approach borrowed from Rebiber (github.com/yuchenlin/rebiber).
+
+Data layout:
+    data/dblp/{conf_name}/{year}.json
+    Each file: {normalized_title: bibtex_string, ...}
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ DATA_DIR = Path(__file__).parent / "data" / "dblp"
 
 
 def normalize_title(title: str) -> str:
-    """Strip all non-alpha characters and lowercase. Matches Rebiber's normalization."""
+    """Strip non-alpha characters and lowercase for fuzzy title matching."""
     return re.sub(r"[^a-zA-Z]", "", title).lower()
 
 
@@ -42,8 +46,13 @@ def normalize_title(title: str) -> str:
 
 
 def _bib_field(bibtex: str, name: str) -> str | None:
-    """Extract a field value from a BibTeX entry."""
+    """Extract a field value from a BibTeX entry. Handles both {value} and bare value."""
+    # Try braced: field = {value},
     m = re.search(rf'^\s*{name}\s*=\s*\{{(.+?)\}}\s*[,}}]', bibtex, re.MULTILINE | re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    # Try bare: field = value,
+    m = re.search(rf'^\s*{name}\s*=\s*([^,\s]+)\s*,', bibtex, re.MULTILINE)
     return m.group(1).strip() if m else None
 
 
@@ -175,6 +184,33 @@ def _parse_bib_entries(bib_text: str) -> list[tuple[str, str]]:
     return results
 
 
+# -- Data I/O --
+
+
+def _year_path(conf_name: str, year: int) -> Path:
+    """Path to a single year's JSON file."""
+    return DATA_DIR / conf_name / f"{year}.json"
+
+
+def _load_year(conf_name: str, year: int) -> dict[str, str]:
+    """Load a single year file. Returns empty dict if missing."""
+    path = _year_path(conf_name, year)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_year(conf_name: str, year: int, data: dict[str, str]) -> Path:
+    """Save a single year file. Creates directories as needed."""
+    path = _year_path(conf_name, year)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    return path
+
+
 # -- Download --
 
 
@@ -193,8 +229,11 @@ def _download_venue_year(
     conf: dict[str, Any],
     year: int,
     console: Console,
-) -> dict[str, str]:
-    """Download all BibTeX entries for one conference year. Returns {norm_title: bib_entry}."""
+) -> dict[str, str] | None:
+    """Download all BibTeX entries for one conference year.
+
+    Returns {norm_title: bib_entry}, or None on network/server error.
+    """
     query = _build_toc_query(conf_name, conf, year)
     entries: dict[str, str] = {}
 
@@ -221,9 +260,9 @@ def _download_venue_year(
                     time.sleep(5)
                     continue
                 console.print(f"  [red]Error: {e}[/]", highlight=False)
-                return entries
+                return None
         else:
-            return entries
+            return None
 
         bib_text = resp.text.strip()
         if not bib_text:
@@ -246,11 +285,16 @@ def _download_venue_year(
 
 def sync(
     conferences: list[str] | None = None,
+    years: list[int] | None = None,
     console: Console | None = None,
 ) -> None:
-    """Download DBLP proceedings and build local JSON database."""
+    """Download DBLP proceedings and build local JSON database.
+
+    Args:
+        conferences: List of conference names to sync (default: all).
+        years: Only sync these specific years (default: all years for each conference).
+    """
     console = console or Console(stderr=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     targets = conferences or list(CONFERENCES.keys())
     invalid = [c for c in targets if c not in CONFERENCES]
@@ -262,17 +306,16 @@ def sync(
     with httpx.Client(timeout=60.0) as client:
         for conf_name in targets:
             conf = CONFERENCES[conf_name]
-            years = _year_range(conf)
-            json_path = DATA_DIR / f"{conf_name}.json"
+            all_years = _year_range(conf)
+            sync_years = [y for y in all_years if y in years] if years else all_years
 
-            existing: dict[str, str] = {}
-            if json_path.exists():
-                existing = json.loads(json_path.read_text())
+            if not sync_years:
+                continue
 
-            prev_count = len(existing)
-            console.print(f"\n[bold]{conf_name}[/] ({len(years)} years, {prev_count} existing entries)")
+            console.print(f"\n[bold]{conf_name}[/] ({len(sync_years)} years)")
 
-            new_entries = 0
+            total_new = 0
+            consecutive_errors = 0
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -280,32 +323,43 @@ def sync(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
-                task = progress.add_task(f"  {conf_name}", total=len(years))
+                task = progress.add_task(f"  {conf_name}", total=len(sync_years))
 
-                for year in years:
+                for year in sync_years:
                     progress.update(task, description=f"  {conf_name} {year}")
                     entries = _download_venue_year(client, conf_name, conf, year, console)
-                    new_entries += len(entries)
-                    existing.update(entries)
+
+                    if entries is None:
+                        consecutive_errors += 1
+                        if consecutive_errors >= 3:
+                            console.print(f"  [red]Aborting {conf_name}: server unavailable[/]")
+                            break
+                    else:
+                        consecutive_errors = 0
+                        if entries:
+                            existing = _load_year(conf_name, year)
+                            existing.update(entries)
+                            _save_year(conf_name, year, existing)
+                            total_new += len(entries)
+
                     progress.advance(task)
                     time.sleep(1)  # polite inter-year delay
 
-            if new_entries > 0 or not json_path.exists():
-                json_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False))
-                console.print(f"  [green]Saved {len(existing)} entries (+{new_entries} new) → {json_path.name}[/]")
+            if total_new > 0:
+                console.print(f"  [green]+{total_new} entries synced[/]")
             else:
-                console.print(f"  [yellow]No new entries fetched, keeping existing {prev_count} entries[/]")
+                console.print(f"  [yellow]No new entries[/]")
 
 
 # -- Search --
 
 
 def _load_db() -> dict[str, str]:
-    """Load all JSON files from data directory into a single lookup dict."""
+    """Load all year JSON files from data directory into a single lookup dict."""
     db: dict[str, str] = {}
     if not DATA_DIR.exists():
         return db
-    for path in DATA_DIR.glob("*.json"):
+    for path in DATA_DIR.rglob("*.json"):
         try:
             data = json.loads(path.read_text())
             db.update(data)
@@ -325,10 +379,7 @@ def search(title: str) -> dict[str, Any] | None:
     entry = db.get(norm)
     if entry is None:
         return None
-    # Handle old format (raw bibtex string) and new format (already structured)
-    if isinstance(entry, str):
-        return _structured_from_bibtex(entry)
-    return entry
+    return _structured_from_bibtex(entry)
 
 
 # -- CLI --
@@ -345,10 +396,15 @@ def cli_sync(
         str | None,
         typer.Option("--conferences", "-c", help="Comma-separated conference names (default: all)"),
     ] = None,
+    year: Annotated[
+        str | None,
+        typer.Option("--year", "-y", help="Comma-separated years to sync (default: all)"),
+    ] = None,
 ) -> None:
     """Download DBLP proceedings and build local JSON database."""
     targets = [c.strip() for c in conferences.split(",")] if conferences else None
-    sync(conferences=targets)
+    year_list = [int(y.strip()) for y in year.split(",")] if year else None
+    sync(conferences=targets, years=year_list)
 
 
 @app.command("search")
@@ -382,14 +438,24 @@ def cli_stats() -> None:
         return
 
     total = 0
-    for path in sorted(DATA_DIR.glob("*.json")):
-        try:
-            data = json.loads(path.read_text())
-            count = len(data)
-            total += count
-            console.print(f"  {path.stem:20s} {count:>6,} entries")
-        except (json.JSONDecodeError, OSError):
-            console.print(f"  {path.stem:20s} [red]error[/]")
+    for conf_dir in sorted(DATA_DIR.iterdir()):
+        if not conf_dir.is_dir():
+            continue
+
+        conf_count = 0
+        year_files = sorted(conf_dir.glob("*.json"))
+        for path in year_files:
+            try:
+                data = json.loads(path.read_text())
+                conf_count += len(data)
+            except (json.JSONDecodeError, OSError):
+                pass
+        total += conf_count
+        year_range = ""
+        if year_files:
+            years = [p.stem for p in year_files]
+            year_range = f" ({years[0]}–{years[-1]})"
+        console.print(f"  {conf_dir.name:20s} {conf_count:>6,} entries{year_range}")
 
     console.print(f"\n  [bold]Total: {total:,} entries[/]")
 

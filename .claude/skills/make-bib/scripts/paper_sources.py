@@ -85,7 +85,7 @@ class RateLimiter:
 
 
 def _s2_interval() -> float:
-    return 0.2 if os.environ.get("SEMANTIC_SCHOLAR_API_KEY") else 1.1
+    return 1.0 if os.environ.get("SEMANTIC_SCHOLAR_API_KEY") else 1.1
 
 
 _RATE_LIMITERS: dict[str, RateLimiter] = {
@@ -1098,6 +1098,17 @@ SearchSource = Enum("SearchSource", {k: k for k in _SEARCH_SOURCES}, type=str)  
 FetchSource = Enum("FetchSource", {k: k for k in _FETCH_SOURCES}, type=str)  # type: ignore[misc]
 
 
+def _require_s2_key(allow_no_s2_key: bool) -> None:
+    """Exit if S2 API key is missing and --allow-no-s2-key not set."""
+    if not os.environ.get("SEMANTIC_SCHOLAR_API_KEY") and not allow_no_s2_key:
+        typer.echo(
+            "Error: SEMANTIC_SCHOLAR_API_KEY not set. "
+            "Use --allow-no-s2-key to proceed without it (slower rate limits).",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+
 app = typer.Typer(
     help="Fetch paper metadata from multiple academic sources and present raw results.\n\n"
     "The tool fetches and presents. It never judges.",
@@ -1111,9 +1122,11 @@ def fetch(
     json_output: Annotated[bool, typer.Option("--json", help="output as JSON array with _meta per source")] = False,
     sources: Annotated[Optional[str], typer.Option(help="comma-separated list of sources (default: all)")] = None,
     raw: Annotated[Optional[FetchSource], typer.Option(help="full unfiltered API response from one source")] = None,
+    allow_no_s2_key: Annotated[bool, typer.Option("--allow-no-s2-key", help="proceed without S2 API key (slower rate limits)")] = False,
 ) -> None:
     """Exact ID-based fetch from all sources (no fuzzy matching)."""
     log = Console(stderr=True)
+    _require_s2_key(allow_no_s2_key)
 
     try:
         pid = PaperId.parse(paper_id)
@@ -1147,9 +1160,12 @@ def search(
     source: Annotated[SearchSource, typer.Argument(help="search source")],
     query: Annotated[str, typer.Argument(help="paper title to search for")],
     json_output: Annotated[bool, typer.Option("--json", help="output as JSON array with _meta per source")] = False,
+    allow_no_s2_key: Annotated[bool, typer.Option("--allow-no-s2-key", help="proceed without S2 API key (slower rate limits)")] = False,
 ) -> None:
     """Search a single source by title."""
     log = Console(stderr=True)
+    if source.value == "s2":
+        _require_s2_key(allow_no_s2_key)
     results = search_one(source.value, query, log)
     if json_output:
         display_json(results)
