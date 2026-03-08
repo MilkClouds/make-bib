@@ -44,6 +44,11 @@ DATA_DIR = Path(__file__).parent / "data" / "dblp"
 MAX_PAGES = 5
 PAGE_SIZE = 1000
 
+# DBLP mirrors (for reference / fallback)
+# Primary: https://dblp.org
+# Mirrors: https://dblp.uni-trier.de, https://dblp.dagstuhl.de
+DBLP_BASE = "https://dblp.org"
+
 # -- Title normalization (Rebiber approach) --
 
 
@@ -271,7 +276,7 @@ def _fetch_page(
     Returns parsed (norm_title, bibtex) pairs, or None on failure.
     Empty list means no results (end of pagination).
     """
-    url = "https://dblp.org/search/publ/api"
+    url = f"{DBLP_BASE}/search/publ/api"
     params = {"q": query, "h": str(PAGE_SIZE), "f": str(page * PAGE_SIZE), "format": "bib"}
 
     for attempt in range(5):
