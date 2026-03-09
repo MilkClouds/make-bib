@@ -1,0 +1,2 @@
+# filelock lock files (DBLP sync)
+scripts/data/**/*.lock

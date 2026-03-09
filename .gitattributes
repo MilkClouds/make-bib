@@ -1,0 +1,2 @@
+.claude/skills/make-bib/scripts/data/dblp/**/*.json filter=lfs diff=lfs merge=lfs -text
+.claude/skills/make-bib/scripts/data/dblp/**/_status.json !filter !diff !merge text
