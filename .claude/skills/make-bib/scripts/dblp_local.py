@@ -102,7 +102,8 @@ def _structured_from_bibtex(bibtex: str) -> dict[str, Any]:
 #   years:     explicit year list for irregular schedules (overrides start/end/step)
 #   type:      "journals" for journal venues (default: "conf")
 #   vol_start: journal volume numbering {"year": ..., "vol": ...}
-#   suffixes:  alternative DBLP toc key suffixes to try (e.g. ["", "c"] for sigmod)
+#   suffixes:  alternative DBLP toc key suffixes to try as fallback (e.g. ["", "c"] for sigmod)
+#   extra_tocs: additional toc suffixes to always fetch and merge (e.g. ["f"] for Findings)
 #
 # Known DBLP toc API limitations:
 #   - COLT 2011-2012: pages exist on DBLP website but toc API returns empty
@@ -136,11 +137,12 @@ CONFERENCES: dict[str, dict[str, Any]] = {
     "accv": {"dir": "accv", "start": 2010, "step": 2},  # even years only
     "miccai": {"dir": "miccai", "start": 2015},
     # NLP / IR
-    "acl": {"dir": "acl", "start": 2010},
-    "emnlp": {"dir": "emnlp", "start": 2010},
+    "acl": {"dir": "acl", "start": 2010, "extra_tocs": ["f"]},  # f = Findings (2021+)
+    "emnlp": {"dir": "emnlp", "start": 2010, "extra_tocs": ["f"]},  # f = Findings (2020+)
     "naacl": {  # irregular schedule (alternates with EACL, sometimes skipped)
         "dir": "naacl",
         "years": [2010, 2012, 2013, 2015, 2016, 2018, 2019, 2021, 2022, 2024, 2025],
+        "extra_tocs": ["f"],  # f = Findings (2022+)
     },
     "eacl": {  # irregular schedule (roughly every 2-3 years)
         "dir": "eacl",
@@ -395,50 +397,58 @@ def _download_venue_year(
         - new_pages_done: always [] (page-level resume not used with split support)
         - is_complete: True if all parts fetched successfully
     """
-    base_query = _build_toc_query(conf_name, conf, year)
-
-    # Try base query first
-    entries, ok = _fetch_query_all_pages(client, base_query, console)
-    if entries:
-        return entries, [], ok
-
-    # Try alternative suffixes (e.g. sigmod2023c)
     db_type = conf.get("type", "conf")
-    suffixes = conf.get("suffixes", [])
     dblp_dir = conf["dir"]
-    for suffix in suffixes:
-        if not suffix:  # skip empty (already tried as base)
-            continue
-        suffix_query = f"toc:db/conf/{dblp_dir}/{conf_name}{year}{suffix}.bht:"
-        entries, ok = _fetch_query_all_pages(client, suffix_query, console)
-        if entries:
-            return entries, [], ok
-        time.sleep(2)
-
-    if db_type == "journals":
-        # Journals don't have split volumes; 0 results = not yet available
-        return {}, [], False
-
-    # Base returned empty — try split proceedings: -1, -2, -3, ...
     all_entries: dict[str, str] = {}
     all_ok = True
 
-    num_parts = 0
-    for part in range(1, 50):  # safety cap
-        part_query = f"toc:db/conf/{dblp_dir}/{conf_name}{year}-{part}.bht:"
-        part_entries, part_ok = _fetch_query_all_pages(client, part_query, console)
-
-        if not part_entries:
-            break  # no more parts
-
-        num_parts = part
-        all_entries.update(part_entries)
-        if not part_ok:
+    # 1. Try base query
+    base_query = _build_toc_query(conf_name, conf, year)
+    entries, ok = _fetch_query_all_pages(client, base_query, console)
+    if entries:
+        all_entries.update(entries)
+        if not ok:
             all_ok = False
-        time.sleep(2)
+    else:
+        # 2. Try alternative suffixes as fallback (e.g. sigmod2023c)
+        for suffix in conf.get("suffixes", []):
+            if not suffix:
+                continue
+            suffix_query = f"toc:db/conf/{dblp_dir}/{conf_name}{year}{suffix}.bht:"
+            entries, ok = _fetch_query_all_pages(client, suffix_query, console)
+            if entries:
+                all_entries.update(entries)
+                if not ok:
+                    all_ok = False
+                break
+            time.sleep(2)
 
-    if all_entries:
-        console.print(f"    [dim]split proceedings: {num_parts} parts[/]", highlight=False)
+        # 3. Try split proceedings: -1, -2, -3, ...
+        if not all_entries and db_type != "journals":
+            num_parts = 0
+            for part in range(1, 50):  # safety cap
+                part_query = f"toc:db/conf/{dblp_dir}/{conf_name}{year}-{part}.bht:"
+                part_entries, part_ok = _fetch_query_all_pages(client, part_query, console)
+                if not part_entries:
+                    break
+                num_parts = part
+                all_entries.update(part_entries)
+                if not part_ok:
+                    all_ok = False
+                time.sleep(2)
+            if all_entries:
+                console.print(f"    [dim]split proceedings: {num_parts} parts[/]", highlight=False)
+
+    # 4. Always fetch extra toc volumes (e.g. Findings) and merge
+    for extra in conf.get("extra_tocs", []):
+        extra_query = f"toc:db/conf/{dblp_dir}/{conf_name}{year}{extra}.bht:"
+        extra_entries, extra_ok = _fetch_query_all_pages(client, extra_query, console)
+        if extra_entries:
+            console.print(f"    [dim]+{len(extra_entries)} from {conf_name}{year}{extra}[/]", highlight=False)
+            all_entries.update(extra_entries)
+            if not extra_ok:
+                all_ok = False
+            time.sleep(2)
 
     # Never mark complete with 0 entries — likely not yet on DBLP
     if not all_entries:
