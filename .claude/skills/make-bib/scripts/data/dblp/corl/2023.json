@@ -1,3 +1,3 @@
-{
-  "conferenceonrobotlearningcorldecemberaucklandnewzealand": "@proceedings{DBLP:conf/corl/2022,\n  editor       = {Karen Liu and\n                  Dana Kulic and\n                  Jeffrey Ichnowski},\n  title        = {Conference on Robot Learning, CoRL 2022, 14-18 December 2022, Auckland,\n                  New Zealand},\n  series       = {Proceedings of Machine Learning Research},\n  volume       = {205},\n  publisher    = {{PMLR}},\n  year         = {2023},\n  url          = {https://proceedings.mlr.press/v205/},\n}"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:1bfd6473bec982e3697aa038939706dc32b9d311201eeeec786bb2a28ec57455
+size 180057

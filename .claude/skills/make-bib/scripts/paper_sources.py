@@ -81,10 +81,19 @@ def _get_dblp_local():
 
 
 def _dblp_local_search(title: str) -> list[dict[str, Any]]:
-    """Search local DBLP DB by title. Returns list of structured hits."""
+    """Search local DBLP DB by title. Returns list of structured hits.
+
+    Raises dblp_local.IncompleteDBError if the database has incomplete data.
+    """
     try:
-        return _get_dblp_local().search(title)
-    except (ImportError, Exception):
+        mod = _get_dblp_local()
+    except ImportError:
+        return []
+    try:
+        return mod.search(title)
+    except mod.IncompleteDBError:
+        raise
+    except Exception:
         return []
 
 

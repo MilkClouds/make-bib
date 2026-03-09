@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#     "filelock",
 #     "httpx",
 #     "rich",
 #     "typer",
@@ -16,6 +17,12 @@ Approach borrowed from Rebiber (github.com/yuchenlin/rebiber).
 Data layout:
     data/dblp/{conf_name}/{year}.json
     Each file: {normalized_title: bibtex_string, ...}
+
+    data/dblp/{conf_name}/_status.json
+    Tracks sync progress: {
+        "complete_years": [2010, 2015, ...],
+        "pages_done": {"2020": [0, 1], ...}
+    }
 """
 
 from __future__ import annotations
@@ -28,11 +35,19 @@ from typing import Annotated, Any
 
 import httpx
 import typer
+from filelock import FileLock
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 # -- Paths --
 DATA_DIR = Path(__file__).parent / "data" / "dblp"
+MAX_PAGES = 5
+PAGE_SIZE = 1000
+
+# DBLP mirrors (for reference / fallback)
+# Primary: https://dblp.org
+# Mirrors: https://dblp.uni-trier.de, https://dblp.dagstuhl.de
+DBLP_BASE = "https://dblp.org"
 
 # -- Title normalization (Rebiber approach) --
 
@@ -82,8 +97,8 @@ def _structured_from_bibtex(bibtex: str) -> dict[str, Any]:
 
 CONFERENCES: dict[str, dict[str, Any]] = {
     # ML / AI
-    "neurips": {"dir": "nips", "start": 2018},
-    "nips": {"dir": "nips", "start": 2000, "end": 2017},
+    "neurips": {"dir": "nips", "start": 2020},
+    "nips": {"dir": "nips", "start": 2000, "end": 2019},
     "icml": {"dir": "icml", "start": 2010},
     "iclr": {"dir": "iclr", "start": 2013},
     "aaai": {"dir": "aaai", "start": 2010},
@@ -192,6 +207,31 @@ def _year_path(conf_name: str, year: int) -> Path:
     return DATA_DIR / conf_name / f"{year}.json"
 
 
+def _status_path(conf_name: str) -> Path:
+    """Path to the status file for a conference directory."""
+    return DATA_DIR / conf_name / "_status.json"
+
+
+def _load_status(conf_name: str) -> dict[str, Any]:
+    """Load sync status for a conference. Returns default if missing."""
+    path = _status_path(conf_name)
+    if not path.exists():
+        return {"complete_years": [], "pages_done": {}}
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {"complete_years": [], "pages_done": {}}
+
+
+def _save_status(conf_name: str, status: dict[str, Any]) -> None:
+    """Save sync status for a conference with file locking."""
+    path = _status_path(conf_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(path) + ".lock")
+    with lock:
+        path.write_text(json.dumps(status, indent=2, ensure_ascii=False))
+
+
 def _load_year(conf_name: str, year: int) -> dict[str, str]:
     """Load a single year file. Returns empty dict if missing."""
     path = _year_path(conf_name, year)
@@ -204,10 +244,12 @@ def _load_year(conf_name: str, year: int) -> dict[str, str]:
 
 
 def _save_year(conf_name: str, year: int, data: dict[str, str]) -> Path:
-    """Save a single year file. Creates directories as needed."""
+    """Save a single year file with file locking. Creates directories as needed."""
     path = _year_path(conf_name, year)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    lock = FileLock(str(path) + ".lock")
+    with lock:
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
     return path
 
 
@@ -223,67 +265,121 @@ def _build_toc_query(conf_name: str, conf: dict[str, Any], year: int) -> str:
     return f"toc:db/conf/{dblp_dir}/{conf_name}{year}.bht:"
 
 
+def _fetch_page(
+    client: httpx.Client,
+    query: str,
+    page: int,
+    console: Console,
+) -> list[tuple[str, str]] | None:
+    """Fetch a single page of BibTeX results from DBLP.
+
+    Returns parsed (norm_title, bibtex) pairs, or None on failure.
+    Empty list means no results (end of pagination).
+    """
+    url = f"{DBLP_BASE}/search/publ/api"
+    params = {"q": query, "h": str(PAGE_SIZE), "f": str(page * PAGE_SIZE), "format": "bib"}
+
+    for attempt in range(5):
+        try:
+            resp = client.get(url, params=params)
+            if resp.status_code == 429:
+                wait = (attempt + 1) * 20
+                console.print(f"  [yellow]Rate limited, waiting {wait}s...[/]", highlight=False)
+                time.sleep(wait)
+                continue
+            if resp.status_code in (500, 502, 503, 504):
+                wait = (attempt + 1) * 10
+                if attempt < 4:
+                    time.sleep(wait)
+                    continue
+                console.print(f"  [red]Page {page} failed: {resp.status_code}[/]", highlight=False)
+                return None
+            resp.raise_for_status()
+            break
+        except httpx.HTTPError as e:
+            if attempt < 4:
+                time.sleep((attempt + 1) * 10)
+                continue
+            console.print(f"  [red]Page {page} failed: {e}[/]", highlight=False)
+            return None
+    else:
+        return None
+
+    bib_text = resp.text.strip()
+    if not bib_text:
+        return []
+
+    parsed = _parse_bib_entries(bib_text)
+    return parsed if parsed else []
+
+
 def _download_venue_year(
     client: httpx.Client,
     conf_name: str,
     conf: dict[str, Any],
     year: int,
+    pages_done: list[int],
     console: Console,
-) -> dict[str, str] | None:
-    """Download all BibTeX entries for one conference year.
+) -> tuple[dict[str, str], list[int], bool]:
+    """Download BibTeX entries for one conference year with page-level resume.
 
-    Returns {norm_title: bib_entry}, or None on network/server error.
+    Args:
+        pages_done: List of page indices already fetched (from _status.json).
+
+    Returns:
+        (entries, new_pages_done, is_complete):
+        - entries: {norm_title: bib_entry} from newly fetched pages
+        - new_pages_done: updated list of all successfully fetched pages
+        - is_complete: True if all pages fetched successfully (no gaps, reached end)
     """
     query = _build_toc_query(conf_name, conf, year)
     entries: dict[str, str] = {}
+    new_pages_done = list(pages_done)
+    had_failure = False
+    reached_end = False
 
-    for step in range(5):  # max 5 pages of 1000
-        url = "https://dblp.org/search/publ/api"
-        params = {"q": query, "h": "1000", "f": str(step * 1000), "format": "bib"}
+    for page in range(MAX_PAGES):
+        if page in pages_done:
+            continue
 
-        for attempt in range(3):
-            try:
-                resp = client.get(url, params=params)
-                if resp.status_code == 429:
-                    wait = (attempt + 1) * 20
-                    console.print(f"  [yellow]Rate limited, waiting {wait}s...[/]", highlight=False)
-                    time.sleep(wait)
-                    continue
-                if resp.status_code == 503:
-                    raise httpx.HTTPStatusError("503 Service Unavailable", request=resp.request, response=resp)
-                resp.raise_for_status()
-                break
-            except httpx.HTTPError as e:
-                if attempt < 2:
-                    time.sleep(5)
-                    continue
-                console.print(f"  [red]Error: {e}[/]", highlight=False)
-                return None
-        else:
-            return None
+        parsed = _fetch_page(client, query, page, console)
 
-        bib_text = resp.text.strip()
-        if not bib_text:
-            break
+        if parsed is None:
+            # Page fetch failed — skip and continue to next page
+            had_failure = True
+            time.sleep(5)
+            continue
 
-        parsed = _parse_bib_entries(bib_text)
         if not parsed:
+            # Empty result — no more pages
+            reached_end = True
             break
 
         for norm_title, bib_entry in parsed:
             entries[norm_title] = bib_entry
+        new_pages_done.append(page)
 
         if len(parsed) < 900:
+            # Last page (fewer than full page of results)
+            reached_end = True
             break
 
         time.sleep(5)  # polite delay between pages
 
-    return entries
+    # Complete = reached natural end with no failed pages in between
+    is_complete = reached_end and not had_failure
+    # Also check no gaps: all pages from 0 to max(new_pages_done) must be present
+    if is_complete and new_pages_done:
+        max_page = max(new_pages_done)
+        is_complete = set(range(max_page + 1)).issubset(set(new_pages_done))
+
+    return entries, sorted(set(new_pages_done)), is_complete
 
 
 def sync(
     conferences: list[str] | None = None,
     years: list[int] | None = None,
+    force: bool = False,
     console: Console | None = None,
 ) -> None:
     """Download DBLP proceedings and build local JSON database.
@@ -291,6 +387,7 @@ def sync(
     Args:
         conferences: List of conference names to sync (default: all).
         years: Only sync these specific years (default: all years for each conference).
+        force: Re-download even complete years (merges with existing data).
     """
     console = console or Console(stderr=True)
 
@@ -301,19 +398,37 @@ def sync(
         console.print(f"[dim]Available: {', '.join(sorted(CONFERENCES.keys()))}[/]")
         return
 
+    failures: list[tuple[str, int]] = []
+
     with httpx.Client(timeout=60.0) as client:
         for conf_name in targets:
             conf = CONFERENCES[conf_name]
+            conf_dir = conf["dir"]
             all_years = _year_range(conf)
             sync_years = [y for y in all_years if y in years] if years else all_years
 
             if not sync_years:
                 continue
 
-            console.print(f"\n[bold]{conf_name}[/] ({len(sync_years)} years)")
+            status = _load_status(conf_dir)
+            complete_years = set(status.get("complete_years", []))
+            pages_done_map: dict[str, list[int]] = status.get("pages_done", {})
+
+            # Filter out complete years unless --force
+            if not force:
+                pending = [y for y in sync_years if y not in complete_years]
+            else:
+                pending = list(sync_years)
+
+            if not pending:
+                console.print(f"\n[bold]{conf_name}[/] — all {len(sync_years)} years complete")
+                continue
+
+            skipped = len(sync_years) - len(pending)
+            skip_msg = f", {skipped} complete" if skipped else ""
+            console.print(f"\n[bold]{conf_name}[/] ({len(pending)} to sync{skip_msg})")
 
             total_new = 0
-            consecutive_errors = 0
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -321,24 +436,46 @@ def sync(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
-                task = progress.add_task(f"  {conf_name}", total=len(sync_years))
+                task = progress.add_task(f"  {conf_name}", total=len(pending))
 
-                for year in sync_years:
+                for year in pending:
                     progress.update(task, description=f"  {conf_name} {year}")
-                    entries = _download_venue_year(client, conf_name, conf, year, console)
+                    year_pages_done = pages_done_map.get(str(year), [])
 
-                    if entries is None:
-                        consecutive_errors += 1
-                        if consecutive_errors >= 3:
-                            console.print(f"  [red]Aborting {conf_name}: server unavailable[/]")
-                            break
-                    else:
-                        consecutive_errors = 0
-                        if entries:
-                            existing = _load_year(conf_name, year)
-                            existing.update(entries)
-                            _save_year(conf_name, year, existing)
-                            total_new += len(entries)
+                    entries, new_pages_done, is_complete = _download_venue_year(
+                        client,
+                        conf_name,
+                        conf,
+                        year,
+                        year_pages_done,
+                        console,
+                    )
+
+                    # Save entries (merge with existing)
+                    if entries:
+                        existing = _load_year(conf_dir, year)
+                        existing.update(entries)
+                        _save_year(conf_dir, year, existing)
+                        total_new += len(entries)
+
+                    # Update status
+                    if is_complete:
+                        complete_years.add(year)
+                        pages_done_map.pop(str(year), None)
+                    elif new_pages_done != year_pages_done:
+                        pages_done_map[str(year)] = new_pages_done
+
+                    if not is_complete:
+                        failures.append((conf_name, year))
+
+                    # Save status after each year
+                    _save_status(
+                        conf_dir,
+                        {
+                            "complete_years": sorted(complete_years),
+                            "pages_done": pages_done_map,
+                        },
+                    )
 
                     progress.advance(task)
                     time.sleep(1)  # polite inter-year delay
@@ -346,10 +483,45 @@ def sync(
             if total_new > 0:
                 console.print(f"  [green]+{total_new} entries synced[/]")
             else:
-                console.print("  [yellow]No new entries[/]")
+                console.print("  [dim]No new entries[/]")
+
+    # Summary
+    if failures:
+        console.print(f"\n[yellow]Incomplete: {len(failures)} conference-years failed:[/]")
+        for conf_name, year in failures:
+            console.print(f"  [yellow]{conf_name} {year}[/]")
+        console.print("[dim]Re-run sync to retry failed years.[/]")
+    else:
+        console.print("\n[green]All conference-years synced successfully.[/]")
 
 
 # -- Search --
+
+
+class IncompleteDBError(Exception):
+    """Raised when the local DBLP database has incomplete data."""
+
+
+def _check_db_completeness() -> list[tuple[str, int]]:
+    """Check for incomplete years (data exists but not marked complete).
+
+    Returns list of (conf_dir, year) tuples that are incomplete.
+    """
+    incomplete: list[tuple[str, int]] = []
+    if not DATA_DIR.exists():
+        return incomplete
+    for conf_dir in DATA_DIR.iterdir():
+        if not conf_dir.is_dir():
+            continue
+        status = _load_status(conf_dir.name)
+        complete_years = set(status.get("complete_years", []))
+        pages_done_map = status.get("pages_done", {})
+        # Any year with pages_done but not complete is incomplete
+        for year_str in pages_done_map:
+            year = int(year_str)
+            if year not in complete_years:
+                incomplete.append((conf_dir.name, year))
+    return incomplete
 
 
 def _load_db() -> dict[str, str]:
@@ -358,6 +530,8 @@ def _load_db() -> dict[str, str]:
     if not DATA_DIR.exists():
         return db
     for path in DATA_DIR.rglob("*.json"):
+        if path.name.startswith("_"):
+            continue
         try:
             data = json.loads(path.read_text())
             db.update(data)
@@ -375,7 +549,19 @@ def search(title: str, max_results: int = 5) -> list[dict[str, Any]]:
 
     Returns list of structured dicts with keys: title, venue, year, key, authors, bibtex.
     Returns empty list if not found.
+
+    Raises:
+        IncompleteDBError: If the database has incomplete (partially synced) years.
     """
+    incomplete = _check_db_completeness()
+    if incomplete:
+        details = ", ".join(f"{c}/{y}" for c, y in incomplete[:10])
+        suffix = f" and {len(incomplete) - 10} more" if len(incomplete) > 10 else ""
+        raise IncompleteDBError(
+            f"Database has {len(incomplete)} incomplete years: {details}{suffix}. "
+            f"Run 'dblp_local.py sync' to complete download."
+        )
+
     db = _load_db()
     norm = normalize_title(title)
 
@@ -413,11 +599,15 @@ def cli_sync(
         str | None,
         typer.Option("--year", "-y", help="Comma-separated years to sync (default: all)"),
     ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Re-download even complete years (merges with existing)"),
+    ] = False,
 ) -> None:
     """Download DBLP proceedings and build local JSON database."""
     targets = [c.strip() for c in conferences.split(",")] if conferences else None
     year_list = [int(y.strip()) for y in year.split(",")] if year else None
-    sync(conferences=targets, years=year_list)
+    sync(conferences=targets, years=year_list, force=force)
 
 
 @app.command("search")
@@ -427,7 +617,13 @@ def cli_search(
     max_results: Annotated[int, typer.Option("--max", "-n", help="Max substring match results")] = 5,
 ) -> None:
     """Search local database by title."""
-    results = search(title, max_results=max_results)
+    try:
+        results = search(title, max_results=max_results)
+    except IncompleteDBError as e:
+        console = Console(stderr=True)
+        console.print(f"[red]Error: {e}[/]")
+        raise typer.Exit(2)
+
     if not results:
         if json_output:
             print(json.dumps({"status": "no_match", "query": title, "normalized": normalize_title(title)}))
@@ -459,8 +655,13 @@ def cli_stats() -> None:
         if not conf_dir.is_dir():
             continue
 
+        status = _load_status(conf_dir.name)
+        complete_years = set(status.get("complete_years", []))
+        pages_done = status.get("pages_done", {})
+        incomplete_count = len([y for y in pages_done if int(y) not in complete_years])
+
         conf_count = 0
-        year_files = sorted(conf_dir.glob("*.json"))
+        year_files = sorted(p for p in conf_dir.glob("*.json") if not p.name.startswith("_"))
         for path in year_files:
             try:
                 data = json.loads(path.read_text())
@@ -470,9 +671,12 @@ def cli_stats() -> None:
         total += conf_count
         year_range = ""
         if year_files:
-            years = [p.stem for p in year_files]
-            year_range = f" ({years[0]}–{years[-1]})"
-        console.print(f"  {conf_dir.name:20s} {conf_count:>6,} entries{year_range}")
+            years_list = [p.stem for p in year_files]
+            year_range = f" ({years_list[0]}–{years_list[-1]})"
+        inc_tag = f" [yellow]({incomplete_count} incomplete)[/]" if incomplete_count else ""
+        console.print(
+            f"  {conf_dir.name:20s} {conf_count:>6,} entries  {len(complete_years):>3} complete{year_range}{inc_tag}"
+        )
 
     console.print(f"\n  [bold]Total: {total:,} entries[/]")
 

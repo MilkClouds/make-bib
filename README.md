@@ -2,7 +2,7 @@
 
 A [Claude Code skill](https://code.claude.com/docs/en/skills) that fetches BibTeX from authoritative sources.
 
-**It does:** Fetches BibTeX from the publisher first (ACL Anthology, PMLR, arXiv), falls back to curated databases (DBLP), formats the entry, and always shows exactly where each entry came from. The mechanical half of citation, handled.
+**It does:** Fetches BibTeX from the publisher first (ACL Anthology, PMLR, arXiv, etc.), falls back to curated databases (DBLP), formats the entry, and always shows exactly where each entry came from. The mechanical half of citation, handled.
 
 **It does NOT:**
 - **Guess.** The first rule is **When in doubt, ask.** Multiple candidates, ambiguous venue, workshop vs main track — it stops and asks you.
