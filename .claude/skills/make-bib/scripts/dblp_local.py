@@ -378,8 +378,8 @@ def _download_venue_year(
     # Base returned empty — try split proceedings: -1, -2, -3, ...
     db_type = conf.get("type", "conf")
     if db_type == "journals":
-        # Journals don't have split volumes
-        return {}, [], True
+        # Journals don't have split volumes; 0 results = not yet available
+        return {}, [], False
 
     dblp_dir = conf["dir"]
     all_entries: dict[str, str] = {}
@@ -401,6 +401,10 @@ def _download_venue_year(
 
     if all_entries:
         console.print(f"    [dim]split proceedings: {num_parts} parts[/]", highlight=False)
+
+    # Never mark complete with 0 entries — likely not yet on DBLP
+    if not all_entries:
+        return {}, [], False
 
     return all_entries, [], all_ok
 
