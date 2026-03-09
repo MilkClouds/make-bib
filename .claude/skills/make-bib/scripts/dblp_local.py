@@ -292,9 +292,7 @@ def _fetch_page(
                 if attempt < 4:
                     time.sleep(wait)
                     continue
-                console.print(
-                    f"  [red]Page {page} failed: {resp.status_code}[/]", highlight=False
-                )
+                console.print(f"  [red]Page {page} failed: {resp.status_code}[/]", highlight=False)
                 return None
             resp.raise_for_status()
             break
@@ -445,7 +443,12 @@ def sync(
                     year_pages_done = pages_done_map.get(str(year), [])
 
                     entries, new_pages_done, is_complete = _download_venue_year(
-                        client, conf_name, conf, year, year_pages_done, console,
+                        client,
+                        conf_name,
+                        conf,
+                        year,
+                        year_pages_done,
+                        console,
                     )
 
                     # Save entries (merge with existing)
@@ -466,10 +469,13 @@ def sync(
                         failures.append((conf_name, year))
 
                     # Save status after each year
-                    _save_status(conf_dir, {
-                        "complete_years": sorted(complete_years),
-                        "pages_done": pages_done_map,
-                    })
+                    _save_status(
+                        conf_dir,
+                        {
+                            "complete_years": sorted(complete_years),
+                            "pages_done": pages_done_map,
+                        },
+                    )
 
                     progress.advance(task)
                     time.sleep(1)  # polite inter-year delay
@@ -669,8 +675,7 @@ def cli_stats() -> None:
             year_range = f" ({years_list[0]}–{years_list[-1]})"
         inc_tag = f" [yellow]({incomplete_count} incomplete)[/]" if incomplete_count else ""
         console.print(
-            f"  {conf_dir.name:20s} {conf_count:>6,} entries"
-            f"  {len(complete_years):>3} complete{year_range}{inc_tag}"
+            f"  {conf_dir.name:20s} {conf_count:>6,} entries  {len(complete_years):>3} complete{year_range}{inc_tag}"
         )
 
     console.print(f"\n  [bold]Total: {total:,} entries[/]")
