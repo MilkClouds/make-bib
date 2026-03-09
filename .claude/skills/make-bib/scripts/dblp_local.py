@@ -97,8 +97,8 @@ def _structured_from_bibtex(bibtex: str) -> dict[str, Any]:
 
 CONFERENCES: dict[str, dict[str, Any]] = {
     # ML / AI
-    "neurips": {"dir": "nips", "start": 2018},
-    "nips": {"dir": "nips", "start": 2000, "end": 2017},
+    "neurips": {"dir": "nips", "start": 2020},
+    "nips": {"dir": "nips", "start": 2000, "end": 2019},
     "icml": {"dir": "icml", "start": 2010},
     "iclr": {"dir": "iclr", "start": 2013},
     "aaai": {"dir": "aaai", "start": 2010},
