@@ -1,169 +1,175 @@
 ---
 name: make-bib
-description: Generate accurate BibTeX for a paper
+description: >
+  Generate accurate BibTeX entries from authoritative sources (DBLP, ACL Anthology, PMLR, CrossRef, arXiv).
+  Use this skill whenever the user needs a citation, BibTeX entry, bibliography fix, or wants to look up
+  where/whether a paper was published — even if they don't explicitly say "BibTeX." Triggers on: paper titles,
+  arXiv IDs, DOIs, DBLP keys, "cite this paper", "add to references", reference list verification, or any
+  academic citation task.
 ---
 
 # make-bib
 
-$ARGUMENTS — `arxiv:ID`, `doi:ID`, title in quotes, or abbreviation
+`$ARGUMENTS` — accepts `arxiv:ID`, `doi:ID`, `dblp:KEY`, `openreview:ID`, a title in quotes, or an abbreviation.
 
-For deeper background on source characteristics, see `${CLAUDE_SKILL_DIR}/citation-guide.md`.
+For background on how bibliographic sources work and their reliability characteristics, see `${CLAUDE_SKILL_DIR}/citation-guide.md`.
 
-## Rules
+## Principles
 
-- **When in doubt, ask.**: citation involves judgment calls the user should make. Use `AskUserQuestion` whenever the right choice isn't clear — multiple candidates for the same title, ambiguous venue, workshop vs main track, conflicting metadata across sources. Silent guessing risks misrepresentation.
-- **Single source of truth**: all fields in one entry MUST come from the same source. Never mix — not even "just the author order" from another source. If metadata differs between sources, use the chosen source as-is or `AskUserQuestion`.
-- **Honest representation**: never cite a preprint as published or vice versa. Workshop papers must have "Workshop" in booktitle — using only the parent conference name is misrepresentation.
-- **Discovery ≠ citation**: tools that help find papers (S2, Google Scholar, etc.) optimize for coverage, not metadata accuracy. Use them for discovery and ID collection, but never copy their venue names, author formatting, or dates into BibTeX fields.
-- **Entry type**: conference/workshop → `@inproceedings`. Journal → `@article`. Preprint → per `[arxiv].entry_type`.
-- **`bibstyle.toml` is law**: when present, it MUST override all defaults — source priority, fields, formatting. See schema section below.
+Each principle exists because a specific class of citation error is common and hard to catch after the fact.
+
+**Ask when uncertain.** Citations involve judgment calls — which of two similar titles is the right paper, whether something is workshop or main track, what venue a paper belongs to. Guessing wrong means the user silently gets a wrong citation in their manuscript. Use `AskUserQuestion` for any ambiguous case: multiple candidates, unclear venue, conflicting metadata across sources.
+
+**One source per entry.** Every field in a BibTeX entry (title, authors, year, venue) should come from the same source. Mixing metadata across sources — even "just the author order" from a different database — creates entries where no single source can verify the whole record. If sources disagree on a field, use the chosen source as-is or ask the user.
+
+**Discovery tools are not citation sources.** Semantic Scholar and Google Scholar optimize for finding papers, not for metadata accuracy. Their venue names, dates, and author formatting frequently contain errors. Use them to locate papers and collect external IDs, then get the actual BibTeX from authoritative sources downstream.
+
+**Honest representation.** Citing a preprint as a published paper (or vice versa) is academic misrepresentation. Workshop papers need "Workshop" in the booktitle — using only the parent conference name makes them look like main-track publications.
+
+**Entry types follow publication status.** Conference or workshop paper → `@inproceedings`. Journal article → `@article`. Preprint → per `[arxiv].entry_type` in bibstyle.toml.
+
+**`bibstyle.toml` governs formatting.** When present in the working directory, it overrides all defaults for field selection, venue style, key format, and arxiv conventions. When absent, the defaults in the schema section below still apply.
 
 ## Tools
 
 `uv run ${CLAUDE_SKILL_DIR}/scripts/paper_sources.py`:
-- `fetch <id>` — ID-based fetch from all sources (arxiv:, doi:, dblp:, openreview:). `--json` for structured output.
-- `search <source> "<title>"` — title search (dblp, crossref, arxiv, openreview, s2).
+- `fetch <id>` — fetch metadata from all sources by ID (`arxiv:`, `doi:`, `dblp:`, `openreview:`). Add `--json` for structured output.
+- `search <source> "<title>"` — title search on a single source (`dblp`, `crossref`, `arxiv`, `openreview`, `s2`).
 
 `uv run ${CLAUDE_SKILL_DIR}/scripts/dblp_local.py`:
-- `sync` — download/update local DBLP database.
-- `search "<title>"` — search local DB by normalized title. No rate limit — prefer over API calls.
+- `sync` — download or update the local DBLP database.
+- `search "<title>"` — search the local DB by normalized title. No rate limit — prefer this over API calls for CS paper discovery.
 
-**Rate limits**: External APIs have rate limits. Do not run more than 3 concurrent make-bib invocations. On 429 errors, wait and retry once — do not spawn more subagents to work around it.
+Rate limits apply to external APIs. Keep concurrent make-bib invocations to 3 or fewer. On 429 errors, wait and retry once — don't spawn extra subagents to work around throttling.
 
 ## Workflow
 
-Every step is mandatory. Skipping any step is a failure.
+### 0. Prerequisites
 
-### 0. Check prerequisites
+Check two things before starting.
 
-**`bibstyle.toml`**:
-- **Found** → read and apply. All formatting decisions (venue style, fields, key style) come from this file.
-- **Not found** → `AskUserQuestion` with two options: (1) create with defaults from schema section below, (2) customize specific settings. Write `bibstyle.toml` with the chosen configuration before proceeding to step 1.
+**`bibstyle.toml`** — look in the working directory:
+- Found → read it; all formatting decisions come from this file.
+- Not found → ask the user: (1) create with defaults from the schema section below, or (2) customize settings first. Write the file before proceeding.
 
-**`SEMANTIC_SCHOLAR_API_KEY`**:
-- **Set** → proceed.
-- **Not set** → `AskUserQuestion` — question: "SEMANTIC_SCHOLAR_API_KEY is not set. Paste your key below, or select an option." Options:
-  - (1) label: "Skip", description: "Not recommended. Without the key, fetch/search s2 are blocked by default, and unauthenticated requests use a shared pool with heavy throttling (3s interval vs 1 req/s)."
-  - (2) label: "How do I get a key?", description: "Free at semanticscholar.org/product/api"
-  - Handling:
-    - **User pastes a key** → write `SEMANTIC_SCHOLAR_API_KEY=<key>` to `.env` in the working directory, proceed.
-    - **"How do I get a key?"** → direct the user to the URL, then re-ask.
-    - **"Skip"** → proceed with `--allow-no-s2-key`.
+**`SEMANTIC_SCHOLAR_API_KEY`** — check the environment:
+- Set → proceed.
+- Not set → ask the user with options: (1) paste a key (free at semanticscholar.org/product/api) — write it to `.env`, (2) skip — proceed with `--allow-no-s2-key`, noting that unauthenticated requests face heavy throttling.
 
 ### 1. Find the paper
 
-**Goal**: identify the paper and collect external IDs (DOI, arXiv, DBLP key, ACL ID).
+Identify the paper and collect its external IDs (DOI, arXiv ID, DBLP key, ACL ID).
 
-Non-paper input (software, dataset, book) → `AskUserQuestion` for citation format. Stop.
+- **ID input** → run `fetch`.
+- **Title or abbreviation** → run `search s2` to locate the paper and collect IDs, then `fetch` with those IDs.
+- **Non-paper input** (software, dataset, book) → ask for the desired citation format and stop.
 
-ID input → `fetch`. Title/abbreviation → `search s2` → get IDs → `fetch`.
+If the input is ambiguous and search returns multiple plausible matches, ask the user to pick. A wrong paper is worse than a brief interruption.
 
-**Disambiguation**: if the input is not an ID or exact full title and S2 returns multiple plausible matches, always `AskUserQuestion` — never silently pick one.
-
-S2 is useful here for discovery — broad coverage, returns external IDs quickly. But S2 metadata (venue names, dates) is unreliable and must not carry over to later steps.
-
-**Output**: log paper title and collected IDs.
+Log the paper title and collected IDs before moving on.
 
 ### 2. Determine publication status
 
-**Goal**: know whether the paper is formally published, and at which venue — or whether it remains a preprint.
+Determine whether the paper is formally published (and where) or still a preprint. This distinction drives everything downstream — a published paper should be cited at its venue, not as an arXiv preprint.
 
-`fetch --json <ID>` returns S2 venue hints and external IDs. These hints need confirmation from more authoritative sources:
+Check in order of authority:
 
-- **Curated DB** (CS: DBLP) — if DBLP lists it under a venue, it's formally published there. Try all available methods (title search, key, DOI) — published titles may differ from arXiv titles.
-- **Review platform** (`search openreview "<exact title>"`) — confirms acceptance decisions directly. Check `invitation` field to distinguish workshop from main track.
-- **Publisher page** — presence in ACL Anthology, ACM DL, PMLR, etc. is definitive.
+1. **DBLP** (local DB first, then API) — if DBLP lists it under a venue, it's published there. Try title search, key lookup, and DOI. Published titles sometimes differ from arXiv titles, so try multiple approaches before concluding it's absent.
+2. **OpenReview** (`search openreview "<exact title>"`) — confirms acceptance decisions directly. Check the `invitation` field to distinguish workshop from main track.
+3. **Publisher page** — presence in ACL Anthology, ACM DL, PMLR, IEEE Xplore, or Springer is definitive.
 
-No venue confirmed → treat as arXiv preprint.
+If no venue is confirmed after exhausting these → treat as arXiv preprint.
 
-**Output**: log `status: published at {venue}` or `status: preprint`.
+Log: `status: published at {venue}` or `status: preprint`.
 
 ### 3. Get BibTeX
 
-**Goal**: obtain citation data from the most authoritative source available.
+Obtain citation data from the most authoritative source available.
 
-**If step 2 confirmed a formal venue, never use arXiv as the BibTeX source.** Use the publisher (Tier 1) or DBLP (Tier 2). arXiv is only a BibTeX source for confirmed preprints — papers with no venue after step 2.
+The critical constraint: **if step 2 confirmed a formal venue, do not use arXiv as the BibTeX source.** arXiv metadata reflects the preprint version — page numbers, venue, and sometimes even author lists differ from the published version. arXiv is a BibTeX source only for confirmed preprints (papers with no venue after step 2).
 
-**Try every source in tier order (Tier 1 → 2 → 3) before falling back.** A single failed attempt (e.g., title search miss) does not exhaust a source — try other methods (DOI, key, proceedings page). Only move to the next tier after all methods for the current tier are genuinely exhausted.
-
-The hierarchy reflects trustworthiness:
+Try every source in tier order before falling back. A single failed method (e.g., title search miss) does not exhaust a source — try other methods (DOI lookup, key lookup, proceedings page) before moving to the next tier.
 
 **Tier 1 — Publisher / Anthology** (authoritative metadata direct from publisher):
 
-| Source | URL | Scope |
-|--------|-----|-------|
-| ACL Anthology | `https://aclanthology.org/{id}.bib` | DOI prefix `10.18653/` |
-| PMLR | `https://proceedings.mlr.press/v{vol}/{key}.html` | ICML, AISTATS, CoRL, COLT, UAI, ALT |
-| arXiv | `https://arxiv.org/abs/{id}` | Preprint (no formal venue confirmed in step 2). Construct `@article` per `[arxiv]` settings |
-| Other publishers | ACM DL, IEEE Xplore, Springer, etc. | Any venue with official proceedings page |
+| Source | URL pattern | Scope |
+|--------|-------------|-------|
+| ACL Anthology | `aclanthology.org/{id}.bib` | DOI prefix `10.18653/` |
+| PMLR | `proceedings.mlr.press/v{vol}/{key}.html` | ICML, AISTATS, CoRL, COLT, UAI, ALT |
+| arXiv | `arxiv.org/abs/{id}` | Preprints only — no venue confirmed in step 2 |
+| Other publishers | ACM DL, IEEE Xplore, Springer, etc. | Any venue with official proceedings |
 
-**Tier 2 — Curated DB** (normalized, reliable for CS):
+**Tier 2 — Curated DB** (normalized, reliable):
 
-| Source | URL | Scope |
-|--------|-----|-------|
-| DBLP | `https://dblp.org/rec/{key}.bib` | By key, by title (local DB), or by DOI (`dblp.org/doi/{doi}.bib`) |
-| Others by field | INSPIRE-HEP (physics), ADS (astronomy), PubMed (medicine), etc. | Non-CS fields |
+| Source | URL pattern | Scope |
+|--------|-------------|-------|
+| DBLP | `dblp.org/rec/{key}.bib` | By key, title (local DB), or DOI (`dblp.org/doi/{doi}.bib`) |
+| Field-specific | INSPIRE-HEP, ADS, PubMed | Non-CS papers |
 
-**Tier 3 — Fallback** (constructed from API data — requires `⚠ UNVERIFIED` annotation):
+**Tier 3 — Fallback** (constructed from API data — annotate as unverified):
 
-| Source | Provenance URL | Scope |
-|--------|---------------|-------|
-| CrossRef | `https://doi.org/{doi}` | DOI exists, no higher-tier source. Construct from API JSON |
-| OpenReview | `https://openreview.net/forum?id={id}` | Recent acceptances or workshops not yet in Tier 1–2. Auto-generated BibTeX — verify venue name and fields |
+| Source | URL pattern | Scope |
+|--------|-------------|-------|
+| CrossRef | `doi.org/{doi}` | DOI exists, no higher-tier source available |
+| OpenReview | `openreview.net/forum?id={id}` | Recent acceptances not yet in Tier 1–2 |
 
-Constructing from CrossRef: `title`→title, `author[].family/given`→author, `container-title`→journal/booktitle, `published.date-parts`→year.
+CrossRef construction: `title` → title, `author[].family/given` → author, `container-title` → journal/booktitle, `published.date-parts` → year.
 
-### 4. Validate, format, and output
+### 4. Format and output
 
-**Goal**: a correct, consistently formatted entry with clear provenance.
+Apply formatting from `bibstyle.toml` (or defaults if absent — see schema below).
 
-Check rules. Format per `bibstyle.toml` (see schema section below).
+Add a provenance comment showing exactly where the BibTeX came from. This lets the user (and future tools) trace each entry back to its source:
 
-Annotate with provenance. The `% source:` line MUST exactly match where the BibTeX was obtained — never mix namespaces (e.g., never write `arxiv:X via dblp`). Tier 1–2 get a source line; Tier 3 gets an additional warning:
-```
+```bibtex
 % source: dblp:conf/cvpr/HeZRS16 via dblp (https://dblp.org/rec/conf/cvpr/HeZRS16.bib)
+@inproceedings{he2016deep,
+  ...
+}
+```
 
+Tier 3 sources get an additional warning — the user should know this entry wasn't verified against an authoritative source:
+
+```bibtex
 % ⚠ UNVERIFIED — constructed from API data, not from authoritative source
 % source: doi:10.xxx via crossref (https://doi.org/10.xxx)
 ```
 
-Output the annotated BibTeX entry only.
+Output the annotated BibTeX entry.
 
-### 5. Pre-output checklist
+### 5. Self-check
 
-**Goal**: catch mistakes before the user sees them. Walk through every item; if any fails, fix and re-check.
+Walk through every item before outputting. If anything fails, fix it and re-check.
 
-1. **Entry type** — conference/workshop → `@inproceedings`, journal → `@article`, preprint → per `[arxiv].entry_type`?
-2. **Venue name** — read `[venue].style` (default: `abbreviated`). Compare the booktitle you are about to output against the style: abbreviated → must be a short acronym (e.g., RSS, NeurIPS, ACL, CVPR), not a descriptive name. Full → official name. `proceedings_prefix` true → prepend "Proceedings of". Sources (including DBLP) return full names — you must convert.
-3. **Fields** — only those in `[fields]` for this entry type? No extra fields (editor, publisher, address, etc.) unless explicitly listed.
-4. **Key style** — `[key].style` (default: `lastname_year`): `lastname_year` → `he2016deep`, `lastname_venue_year` → `he2016cvpr`, `acl` → ACL Anthology ID.
-5. **Single source** — every field from exactly one source? No mixing across sources.
-6. **Source line** — `% source:` exactly matches the actual BibTeX source? Tier 3 has `⚠ UNVERIFIED`?
+1. **Entry type** — matches publication status? Conference/workshop → `@inproceedings`, journal → `@article`, preprint → per `[arxiv].entry_type`.
+2. **Venue name** — matches `[venue].style`? Default is `abbreviated`, meaning short acronyms (NeurIPS, ACL, CVPR) not descriptive names. Sources including DBLP return full names — convert them. If `proceedings_prefix` is true, prepend "Proceedings of".
+3. **Fields** — only those listed in `[fields]` for this entry type? Strip stray fields (editor, publisher, address) unless they're explicitly configured.
+4. **Key style** — matches `[key].style`? `lastname_year` → `he2016deep`, `lastname_venue_year` → `he_cvpr2016`, `acl` → ACL Anthology ID.
+5. **Single source** — every field from exactly one source? No mixing.
+6. **Source line** — `% source:` matches the actual BibTeX source? Tier 3 has `⚠ UNVERIFIED`?
 7. **Honest representation** — preprint not cited as published? Workshop has "Workshop" in booktitle?
 
 ## `bibstyle.toml` schema
 
-When present, `bibstyle.toml` MUST be followed — it strictly overrides all defaults.
-
-**If absent, the defaults shown below still apply.** Do not treat missing bibstyle.toml as "no formatting rules" — the schema defines the defaults.
+Controls all formatting. When present, overrides defaults. When absent, these defaults still apply — a missing file does not mean "no formatting rules."
 
 ```toml
 [fields]
 conference = ["title", "author", "booktitle", "year"]
 journal = ["title", "author", "journal", "year", "volume", "number"]
-# Optional: "pages", "doi", "url", "publisher", "address", "editor", "month"
+# Optional fields: "pages", "doi", "url", "publisher", "address", "editor", "month"
 
 [authors]
 max = 0  # 0 = unlimited
 
 [venue]
 style = "abbreviated"       # "abbreviated" or "full"
-proceedings_prefix = false   # true: "Proceedings of NeurIPS"
+proceedings_prefix = false   # true → "Proceedings of NeurIPS"
 
 [key]
 style = "lastname_year"     # "lastname_year", "lastname_venue_year", "acl"
 
 [arxiv]
-entry_type = "article"                      # "article" or "misc"
+entry_type = "article"                       # "article" or "misc"
 journal_format = "arXiv preprint arXiv:{id}" # or "CoRR"
 ```

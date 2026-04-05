@@ -1,0 +1,48 @@
+{
+  "skill_name": "make-bib",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "cite arxiv:2309.17453",
+      "expected_output": "BibTeX @inproceedings entry for 'Efficient Streaming Language Models with Attention Sinks' at ICLR 2024, NOT an arXiv preprint entry",
+      "files": [],
+      "expectations": [
+        "Entry type is @inproceedings, not @article or @misc",
+        "Booktitle references ICLR (not arXiv)",
+        "Year is 2024 (ICLR publication year, not 2023 arXiv upload year)",
+        "A '% source:' provenance comment is present",
+        "The source is NOT arXiv — it comes from a Tier 1 or Tier 2 source",
+        "Author list includes Guangxuan Xiao as first author"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need the bibtex for \"Attention Is All You Need\"",
+      "expected_output": "BibTeX entry for Vaswani et al. 'Attention Is All You Need' at NeurIPS 2017",
+      "files": [],
+      "expectations": [
+        "Entry type is @inproceedings",
+        "Booktitle references NeurIPS or NIPS (2017 was still called NIPS)",
+        "Year is 2017",
+        "Author list includes Vaswani",
+        "A '% source:' provenance comment is present",
+        "BibTeX key follows lastname_year style (e.g., vaswani2017attention or similar)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "add a citation for the LoRA paper by Hu et al.",
+      "expected_output": "BibTeX @inproceedings entry for 'LoRA: Low-Rank Adaptation of Large Language Models' at ICLR 2022",
+      "files": [],
+      "expectations": [
+        "Entry type is @inproceedings",
+        "Booktitle references ICLR",
+        "Year is 2022",
+        "Title contains 'LoRA' or 'Low-Rank Adaptation'",
+        "Author list includes Edward J. Hu or Hu as first author",
+        "A '% source:' provenance comment is present",
+        "The source is NOT arXiv — comes from Tier 1 or Tier 2"
+      ]
+    }
+  ]
+}
