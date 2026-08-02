@@ -60,9 +60,6 @@ Let `S=.claude/skills/fetch-bib/scripts/dblp_local.py`.
      uv run $S search "some paper title"
    ```
 
-Paperstack builds and publishes its own query index from this archive. Follow
-`MilkClouds/my-paperstack`'s DBLP release procedure; do not add paperstack assets to the fetch-bib Release.
-
 ## Notes
 
 - A year is marked `complete` once its fetch succeeds end to end, regardless of
