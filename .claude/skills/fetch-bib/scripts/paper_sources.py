@@ -26,14 +26,14 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 import hishel
-from hishel.httpx import SyncCacheTransport
 import httpx
 import typer
 from dotenv import load_dotenv
+from hishel.httpx import SyncCacheTransport
 from rich.console import Console
 
 load_dotenv()
@@ -93,7 +93,7 @@ def _dblp_local_search(title: str) -> list[dict[str, Any]]:
         return mod.search(title)
     except mod.IncompleteDBError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - the local index is an optional fallback
         return []
 
 
@@ -1187,8 +1187,8 @@ app = typer.Typer(
 def fetch(
     paper_id: Annotated[str, typer.Argument(help="arxiv:ID, doi:ID, dblp:KEY, or openreview:ID")],
     json_output: Annotated[bool, typer.Option("--json", help="output as JSON array with _meta per source")] = False,
-    sources: Annotated[Optional[str], typer.Option(help="comma-separated list of sources (default: all)")] = None,
-    raw: Annotated[Optional[FetchSource], typer.Option(help="full unfiltered API response from one source")] = None,
+    sources: Annotated[str | None, typer.Option(help="comma-separated list of sources (default: all)")] = None,
+    raw: Annotated[FetchSource | None, typer.Option(help="full unfiltered API response from one source")] = None,
     allow_no_s2_key: Annotated[
         bool, typer.Option("--allow-no-s2-key", help="proceed without S2 API key (slower rate limits)")
     ] = False,

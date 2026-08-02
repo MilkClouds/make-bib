@@ -1,7 +1,7 @@
 # Releasing a refreshed DBLP snapshot
 
-The DBLP database is **not** in the repo — it ships as a GitHub Release asset
-(`dblp-data.tar.gz`) that `ensure_data()` downloads on first use. To publish a
+The DBLP database is **not** in the repo. Each Release contains `dblp-data.tar.gz`
+for fetch-bib and `dblp.sqlite3` for paperstack. `ensure_data()` downloads the JSON asset on first use. To publish a
 refreshed snapshot, never `tar` a hand-typed path: the local data lives under
 `DATA_DIR`, which `_resolve_data_dir()` derives from `CLAUDE_PLUGIN_DATA` →
 `XDG_DATA_HOME` → `~/.local/share`. If you guess the path, you can package a
@@ -43,6 +43,8 @@ Let `S=.claude/skills/fetch-bib/scripts/dblp_local.py`.
 
    To replace the asset on an existing tag: `gh release upload <tag>
    /tmp/dblp-data.tar.gz --clobber`.
+
+   Build and upload `dblp.sqlite3` with my-paperstack's `scripts/build/dblp_sqlite.py` before publishing the Release.
 
 4. **Point the code at it** in `scripts/dblp_local.py`:
    - `DATA_RELEASE_URL` → the new tag's `dblp-data.tar.gz`
