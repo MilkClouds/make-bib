@@ -41,7 +41,7 @@ import httpx
 import typer
 from filelock import FileLock
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 
 # -- Paths --
