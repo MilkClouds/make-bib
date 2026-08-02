@@ -73,8 +73,8 @@ PAGE_SIZE = 100
 # the repo owner's Git LFS bandwidth quota. ``ensure_data`` fetches it on first
 # use. When republishing a refreshed snapshot, point both constants at the new
 # `dblp-db-YYYY.MM` release.
-DATA_RELEASE_URL = "https://github.com/MilkClouds/fetch-bib/releases/download/dblp-db-2026.06/dblp-data.tar.gz"
-DATA_RELEASE_SHA256 = "2a58914eef571baceaf4650e69aba1caf04df095b3ed3e779a9f190ac479c578"
+DATA_RELEASE_URL = "https://github.com/MilkClouds/fetch-bib/releases/download/dblp-db-2026.08/dblp-data.tar.gz"
+DATA_RELEASE_SHA256 = "5e88b14574bddeab5f3933da242f77c4026eaf007b49b8f605af1ce4dcc2f3d9"
 
 # DBLP base host. dblp.org is primary; the Trier and Dagstuhl mirrors serve the
 # same API and are useful when dblp.org rate-limits a bulk sync. Override via the
