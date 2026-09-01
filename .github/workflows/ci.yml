@@ -8,39 +8,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Validate skill
+        run: |
+          uvx --from git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref \
+            skills-ref validate skills/fetch-bib
 
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --dev
-
-      - name: Run ruff format check
-        run: uv run ruff format --check .
-
-      - name: Run ruff lint
-        run: uv run ruff check .
-
-  # test:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v7
-
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v7
-
-  #     - name: Set up Python
-  #       run: uv python install 3.12
-
-  #     - name: Install dependencies
-  #       run: uv sync --dev
-
-  #     - name: Run tests
-  #       run: uv run pytest -v
+      - name: Test universal installation
+        run: |
+          cd "$(mktemp -d)"
+          npx --yes skills@latest add "$GITHUB_WORKSPACE" \
+            --skill fetch-bib --agent universal --copy --yes
+          test -f .agents/skills/fetch-bib/SKILL.md
+          cmp .agents/skills/fetch-bib/SKILL.md \
+            "$GITHUB_WORKSPACE/skills/fetch-bib/SKILL.md"
+          test -f .agents/skills/fetch-bib/references/citation-guide.md
+          test "$(jq -r '.plugins[0].skills[0]' \
+            "$GITHUB_WORKSPACE/.claude-plugin/marketplace.json")" = "./skills/fetch-bib"

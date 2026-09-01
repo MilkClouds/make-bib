@@ -1,221 +1,172 @@
-# fetch-bib: Human-in-the-loop BibTeX fetch from the authoritative source
+# fetch-bib
 
-A [Claude Code skill](https://code.claude.com/docs/en/skills) that fetches BibTeX from authoritative sources.
+[![CI](https://github.com/MilkClouds/fetch-bib/actions/workflows/ci.yml/badge.svg)](https://github.com/MilkClouds/fetch-bib/actions/workflows/ci.yml)
+[![skills.sh](https://skills.sh/b/MilkClouds/fetch-bib)](https://skills.sh/MilkClouds/fetch-bib)
 
-**It does:** Fetches BibTeX from the publisher first (ACL Anthology, PMLR, arXiv, etc.), falls back to curated databases (DBLP), formats the entry, and always shows exactly where each entry came from. The mechanical half of citation, handled.
+A universal agent skill for source-backed BibTeX.
 
-**It does NOT:**
-- **Guess.** The first rule is **When in doubt, ask.** Multiple candidates, ambiguous venue, workshop vs main track — it stops and asks you.
-- **Generate.** Every field comes from an [authoritative source](#sources) — not from an LLM filling in blanks.
+fetch-bib uses [Paperstack](https://github.com/MilkClouds/paperstack) for paper discovery, external identifiers, metadata records, and its optional DBLP index. The skill keeps the editorial decisions that a metadata tool should not make: which version is citable, whether a work is formally published, which source is authoritative, and how an entry should be written into a bibliography.
 
+It never invents missing metadata. Ambiguous works, conflicting venues, and workshop/main-track uncertainty are shown to the user instead of guessed.
 
-**Single paper fetch.** Google Scholar would give you arXiv 2023 for this paper. fetch-bib finds ICLR 2024:
+## Recorded examples
+
+**Published version resolution.** A naive lookup may return the 2023 arXiv preprint for StreamingLLM. fetch-bib resolves the ICLR 2024 publication:
 
 <p align="center">
-  <img src="docs/demos/demo-streamingllm.svg" alt="fetch-bib StreamingLLM demo" width="720">
+  <img src="docs/demos/demo-streamingllm.svg" alt="fetch-bib StreamingLLM publication-resolution demo" width="720">
 </p>
 
-<!--
-**Disambiguation.** When something is ambiguous, it stops and asks — then goes deep to find the right source:
+**Bulk verification.** In this recorded test, 14 of 48 generated bibliography entries contained metadata errors: fabricated or incorrect author names, wrong venues, missing co-authors, incorrect pages, or preprints cited instead of formal publications.
 
+<p align="center">
+  <img src="docs/demos/demo-verify.svg" alt="fetch-bib bulk bibliography verification demo" width="720">
+</p>
+
+The complete bibliography fixtures are retained as [before](docs/demos/references-before.bib) and [after](docs/demos/references-after.bib) files.
+
+## Install
+
+Prerequisites:
+
+- Python 3.11 or newer
+- [uv](https://docs.astral.sh/uv/)
+- Node.js and `npx` for skill installation
+
+Install the Paperstack CLI:
+
+```bash
+uv tool install 'paperstack-cli>=0.3.2'
 ```
-> /fetch-bib Scaling Laws
 
-? Which "Scaling Laws" paper do you mean?
-  1. Kaplan et al. 2020 — Scaling Laws for Neural Language Models (arXiv:2001.08361)
-  2. Hoffmann et al. 2022 — Training Compute-Optimal Large Language Models (Chinchilla, arXiv:2203.15556)
-  3. Henighan et al. 2020 — Scaling Laws for Autoregressive Generative Modeling (arXiv:2010.14701)
+Install fetch-bib globally for detected agents:
 
-> 2
+```bash
+npx skills add MilkClouds/fetch-bib --skill fetch-bib -g
+```
 
-  Step 1: arxiv:2203.15556, DOI 10.52202/068431-2176
-  Step 2: S2 says NeurIPS 2022. DBLP search by title — miss (different title).
-          DBLP search by DOI — miss. Trying NeurIPS proceedings directly...
-          Found. Published title: "An empirical analysis of compute-optimal
-          large language model training"
-  Step 3: Tier 1 — fetching BibTeX from proceedings.neurips.cc
+Target particular agents when needed:
 
-% source: neurips:NEURIPS2022_c1e2faff via neurips (https://proceedings.neurips.cc/paper_files/paper/19447-/bibtex)
-@inproceedings{hoffmann2022training,
-  title     = {An empirical analysis of compute-optimal
-               large language model training},
-  author    = {Hoffmann, Jordan and Borgeaud, Sebastian
-               and Mensch, Arthur and ...},
-  booktitle = {NeurIPS},
-  year      = {2022},
+```bash
+npx skills add MilkClouds/fetch-bib --skill fetch-bib -g -a codex -a claude-code
+```
+
+Omit `-g` for a project-local installation. Update later with:
+
+```bash
+npx skills update fetch-bib -g
+```
+
+The skill is stored once in `skills/fetch-bib` and follows the open [Agent Skills specification](https://agentskills.io/specification). It does not require the separate Paperstack agent skill or a configured Paperstack review corpus.
+
+## Use
+
+Ask your agent naturally:
+
+```text
+Get the BibTeX for arxiv:2106.09685.
+Add doi:10.1109/CVPR.2016.90 to references.bib.
+Verify every entry in references.bib.
+Where was "Attention Is All You Need" published?
+```
+
+Supported identifiers include `arxiv:`, `doi:`, `dblp:`, and `openreview:`. Titles and common paper abbreviations are also accepted.
+
+The core workflow is:
+
+1. Resolve the work and collect stable identifiers with Paperstack.
+2. Determine whether the citable version is a conference paper, workshop paper, journal article, or preprint.
+3. Select one authoritative source for the complete entry.
+4. Apply `bibstyle.toml`, add provenance, and check the result.
+5. Return the entry or make the explicitly requested bibliography edit.
+
+Every entry includes its actual source:
+
+```bibtex
+% source: dblp:conf/cvpr/HeZRS16 via paperstack/dblp (https://dblp.org/rec/conf/cvpr/HeZRS16.html)
+@inproceedings{he2016deep,
+  title     = {Deep Residual Learning for Image Recognition},
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  booktitle = {CVPR},
+  year      = {2016},
 }
 ```
 
-DBLP indexes this paper under its arXiv title ("Training Compute-Optimal Large Language Models"), but NeurIPS published it under a **different title** ("An empirical analysis of compute-optimal large language model training"). Opus 4.6 with fetch-bib exhausts DBLP lookups, falls through to the NeurIPS proceedings page, and uses the published title.
--->
+Crossref and OpenReview are last-resort records and receive an `UNVERIFIED` warning.
 
-**Bulk verification.** A real test: Claude Code (**Opus 4.6**) with full web access generated `references.bib` (48 entries) for a robotics paper — no fetch-bib, no source verification. Then we ran fetch-bib to verify every entry:
+## Configure
 
-<p align="center">
-  <img src="docs/demos/demo-verify.svg" alt="fetch-bib bulk verification demo" width="720">
-</p>
+### BibTeX style
 
-**14 of 48 entries had errors.** None were fake papers — every entry pointed to a real paper. But the LLM hallucinated the *metadata*: all 8 author given names fabricated in one entry, 4 of 6 last names wrong in another, a paper listed at ICML when it was actually CoRL, an arXiv preprint that was actually published at ICRA 2024, wrong page numbers, missing co-authors. These errors are nearly impossible to catch by eye. fetch-bib verified each entry against DBLP, arXiv, and publisher pages, fixed all 14, and added source URLs to all 48. Full diff: [`before`](docs/demos/references-before.bib) → [`after`](docs/demos/references-after.bib).
-
-## Why this exists (and its limitations)
-
-LLMs hallucinate citations. This is not hypothetical — it is happening at scale in published research:
-
-- **NeurIPS 2025**: [100+ hallucinated citations found across 53 accepted papers](https://fortune.com/2026/01/21/neurips-ai-conferences-research-papers-hallucinations/) that passed 3+ peer reviewers. Fabricated authors, fake venues, dead URLs.
-- **ACL/EMNLP 2025**: [~300 papers with hallucinated references](https://arxiv.org/abs/2601.18724), with EMNLP 2025 alone accounting for 154. The number jumped sharply from 20 in 2024 to 275 in 2025.
-- **arXiv trend**: [Analysis of 2.2M citations](https://spylab.ai/blog/hallucinations/) shows hallucinated references accelerating from early 2025, with LLMs blending real papers into chimeric non-existent entries.
-
-The root cause: LLMs generate plausible-looking citations from statistical patterns, not from actual sources. fetch-bib avoids this by never generating metadata — every field comes from a publisher, curated database, or API response, with the source URL attached.
-
-That said, fetch-bib is still an LLM skill. It can pick the wrong source, misformat fields, or fail under edge cases. **Always review the output before citing.** Designed for and tested with **Claude Opus 4.6** — *correct behavior with lower-tier models is not guaranteed.*
-
-## Sources
-
-**Tier 1 — Publisher / Anthology** (authoritative metadata direct from publisher):
-
-| Source | Scope |
-|---|---|
-| ACL Anthology | ACL, EMNLP, NAACL, and NLP workshops |
-| PMLR | ICML, AISTATS, COLT, UAI, CoRL, ALT |
-| arXiv | Preprints (when no formal venue is confirmed) |
-| Other publishers | NeurIPS proceedings, ACM DL, IEEE Xplore, Springer, etc. |
-
-**Tier 2 — Curated DB** (normalized, reliable):
-
-| Source | Scope |
-|---|---|
-| DBLP | ~40 CS conferences via local database (includes IEEE, ACM venues) |
-| Others by field | INSPIRE-HEP (physics), ADS (astronomy), PubMed (medicine) |
-
-**Tier 3 — Fallback** (requires `⚠ UNVERIFIED` annotation):
-
-| Source | Scope |
-|---|---|
-| CrossRef | Any paper with a DOI, when higher tiers unavailable |
-| OpenReview | Recent acceptances or workshops not yet in Tier 1–2 |
-
-Entries from Tier 3 sources are labeled `⚠ UNVERIFIED` in the output. If you see this marker, verify the venue name, author list, and year yourself before using the entry.
-
-## Workflow
-
-```
-Input: paper ID, title, or abbreviation
-         │
-         ▼
-    ┌─ bibstyle.toml ───────────────────────┐
-    │  Found → apply. Not found → ask you   │
-    │  (defaults or customize), create file │
-    └────────────────────────┬──────────────┘
-                             │
-    ┌─ Resolve ──────────────┤               ambiguous?
-    │  Semantic Scholar → external IDs    ──────→ asks you
-    │  (DOI, DBLP key, ACL ID, arXiv ID)     (multiple candidates,
-    └────────────────────────┬──────────────┘  workshop vs main,
-                             │                 venue unclear)
-    ┌─ Verify status ────────┤
-    │  DBLP (title/key/DOI) / OpenReview /  │
-    │  publisher page → published or preprint│
-    └────────────────────────┬──────────────┘
-                             │
-    ┌─ Fetch BibTeX ─────────┤
-    │  Tier 1 → 2 → 3, exhaust each tier   │
-    │  before falling back                  │
-    └────────────────────────┬──────────────┘
-                             │
-    ┌─ Validate & format ────┤
-    │  Apply bibstyle.toml, run checklist   │
-    │  (type, venue, fields, key, source)   │
-    └────────────────────────┬──────────────┘
-                             │
-                             ▼
-                        You review.
-```
-
-## Prerequisites
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — Anthropic's CLI for Claude. This skill runs inside Claude Code, not as a standalone tool.
-- **Claude Opus 4.6** — fetch-bib requires multi-step judgment (source selection, venue verification, disambiguation). Lower-tier models may skip steps, pick wrong sources, or silently guess instead of asking. Opus 4.6 is the only model fetch-bib is designed for and tested with.
-- Python 3.10+ and [uv](https://docs.astral.sh/uv/) (for the bundled DBLP local database scripts)
-
-## Installation
-
-This repo is a [Claude Code skill](https://code.claude.com/docs/en/skills) — a set of instructions and scripts that Claude Code loads when you type `/fetch-bib`.
-
-In Claude Code, run:
-
-```
-/plugin marketplace add MilkClouds/fetch-bib
-```
-
-Then select `Browse and install plugins` → `fetch-bib` → `Install now`. Or install directly:
-
-```
-/plugin install fetch-bib@fetch-bib
-```
-
-After installing, restart your Claude Code session for the skill to take effect.
-
-Or manually: clone this repo into `.claude/skills/fetch-bib` (project-level) or `~/.claude/skills/fetch-bib` (global).
-
-### Migrating from `make-bib`
-
-This plugin was renamed `make-bib` → `fetch-bib` (repo moved to `MilkClouds/fetch-bib`; old URLs redirect). If you installed the old `make-bib`, its registration breaks once the marketplace auto-updates to the new name, so re-install under the new name:
-
-```
-/plugin marketplace remove make-bib
-/plugin marketplace add MilkClouds/fetch-bib
-/plugin install fetch-bib@fetch-bib
-```
-
-Then restart Claude Code. The local DBLP database (~36 MB) re-downloads once, because the plugin's data directory is keyed by the new name. For a project-scoped install, run `/plugin install fetch-bib@fetch-bib --scope project` in that project.
-
-## Usage
-
-```
-> /fetch-bib arxiv:2106.09685
-> /fetch-bib doi:10.1109/CVPR.2016.90
-> /fetch-bib "Attention Is All You Need"
-> /fetch-bib LoRA
-```
-
-## Configuration
-
-Create `bibstyle.toml` in your project root:
+On first use in a project, fetch-bib asks whether to create the default `bibstyle.toml` or customize it:
 
 ```toml
 [fields]
 conference = ["title", "author", "booktitle", "year"]
 journal = ["title", "author", "journal", "year", "volume", "number"]
 
+[authors]
+max = 0
+
 [venue]
-style = "abbreviated"       # or "full"
-proceedings_prefix = false   # true → "Proceedings of NeurIPS"
+style = "abbreviated"
+proceedings_prefix = false
 
 [key]
-style = "lastname_year"     # "lastname_year", "lastname_venue_year", "acl"
+style = "lastname_year"
 
 [arxiv]
 entry_type = "article"
 journal_format = "arXiv preprint arXiv:{id}"
 ```
 
-## Local DBLP database
+### Semantic Scholar
 
-Bundled local database covers ~40 CS conferences (2000–2026) for instant title-based lookup without hitting the DBLP API. Inspired by [rebiber](https://github.com/yuchenlin/rebiber).
+Semantic Scholar is used for discovery, not as a citation source. Its API key is optional but improves reliability.
 
 ```bash
-uv run scripts/dblp_local.py sync                    # update all
-uv run scripts/dblp_local.py sync -c neurips -y 2024  # specific venue/year
-uv run scripts/dblp_local.py stats                    # show coverage
+paperstack config status
+paperstack config set semantic-scholar.api-key
 ```
 
-## Contributing
+`config set` prompts without echoing the secret and stores it in Paperstack's user credential store. fetch-bib never asks for the key in chat and never writes it to a project `.env`.
 
-Contributions are very welcome — especially issues and changes that improve citation accuracy. Bug reports for incorrect metadata, missing sources, or wrong venue mappings are particularly valuable.
+### DBLP
 
-## Related projects
+Paperstack owns the selected-venue DBLP index and its release lifecycle:
 
-- [**rebiber**](https://github.com/yuchenlin/rebiber) — Normalizes arXiv BibTeX with DBLP/ACL data. fetch-bib's local database is inspired by rebiber's approach.
-- [**SimBiber**](https://github.com/MLNLP-World/SimBiber) — Simplifies BibTeX to minimal fields.
-- [**bibtex-dblp**](https://github.com/volkm/bibtex-dblp) — Python tool to retrieve BibTeX entries from DBLP.
-- [**Generating BibTeX from DOIs via DBLP**](https://www.joachim-breitner.de/blog/806-Generating_bibtex_bibliographies_from_DOIs_via_DBLP) — Blog post on using DBLP as a DOI-to-BibTeX resolver.
+```bash
+paperstack index dblp status
+paperstack index dblp install
+paperstack index dblp update
+```
+
+The index is optional. Without it, Paperstack can use online DBLP lookup. An index miss is not proof that a paper is unpublished because coverage is intentionally limited to selected CS venues.
+
+## Source policy
+
+**Tier 1 — Publisher / Anthology.** Prefer authoritative metadata from the official publisher or anthology: ACL Anthology, PMLR, ACM DL, IEEE Xplore, Springer, and arXiv for confirmed preprints only.
+
+**Tier 2 — Curated databases.** Use DBLP for published CS papers when a Tier 1 export is unavailable. Use the corresponding official field-specific database for non-CS work.
+
+**Tier 3 — Fallback.** Use Crossref or OpenReview only after exhausting Tier 1 and Tier 2, and mark the entry `UNVERIFIED`.
+
+Paperstack exposes ACL Anthology, arXiv, DBLP, Crossref, and OpenReview records. For unsupported publishers such as PMLR, ACM, IEEE, or Springer, the skill may use the official publisher export directly. Each entry still uses one source; no source adapter is maintained in this repository.
+
+## Existing Claude Code installations
+
+The Claude marketplace manifest remains as a compatibility shim for existing users and points to the same universal skill. Existing marketplace installations continue to receive updates; there is no second Claude-specific copy to drift.
+
+New installations should use `npx skills`. The old bundled DBLP downloader and fetch-bib DBLP releases are no longer used.
+
+## Development
+
+```bash
+uvx --from git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref \
+  skills-ref validate skills/fetch-bib
+npx skills add . --list
+```
+
+## License
+
+[MIT](LICENSE)
