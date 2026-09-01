@@ -30,5 +30,6 @@ jobs:
           test -f .agents/skills/fetch-bib/SKILL.md
           cmp .agents/skills/fetch-bib/SKILL.md \
             "$GITHUB_WORKSPACE/skills/fetch-bib/SKILL.md"
+          test -f .agents/skills/fetch-bib/references/citation-guide.md
           test "$(jq -r '.plugins[0].skills[0]' \
             "$GITHUB_WORKSPACE/.claude-plugin/marketplace.json")" = "./skills/fetch-bib"

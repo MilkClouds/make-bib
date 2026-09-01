@@ -147,12 +147,11 @@ The index is optional. Without it, Paperstack can use online DBLP lookup. An ind
 
 ## Source policy
 
-fetch-bib prefers:
+**Tier 1 — Publisher / Anthology.** Prefer authoritative metadata from the official publisher or anthology: ACL Anthology, PMLR, ACM DL, IEEE Xplore, Springer, and arXiv for confirmed preprints only.
 
-1. Official publisher or anthology metadata
-2. arXiv for confirmed preprints only
-3. DBLP
-4. Crossref or OpenReview, marked `UNVERIFIED`
+**Tier 2 — Curated databases.** Use DBLP for published CS papers when a Tier 1 export is unavailable. Use the corresponding official field-specific database for non-CS work.
+
+**Tier 3 — Fallback.** Use Crossref or OpenReview only after exhausting Tier 1 and Tier 2, and mark the entry `UNVERIFIED`.
 
 Paperstack directly exposes ACL Anthology, arXiv, DBLP, Crossref, and OpenReview records. For publishers it does not yet expose, such as PMLR, ACM, IEEE, or Springer, the skill may use the official publisher page. No publisher or database adapter is maintained in this repository.
 
