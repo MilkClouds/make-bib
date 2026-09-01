@@ -4,17 +4,17 @@
     "name": "MilkClouds"
   },
   "metadata": {
-    "description": "Generate accurate BibTeX entries from authoritative sources (DBLP, ACL Anthology, PMLR, CrossRef, arXiv)",
-    "version": "1.2.2"
+    "description": "Verify and format source-backed BibTeX with Paperstack",
+    "version": "2.0.0"
   },
   "plugins": [
     {
       "name": "fetch-bib",
-      "description": "Generate accurate BibTeX entries from authoritative sources (DBLP, ACL Anthology, PMLR, CrossRef, arXiv). Use for citations, BibTeX, bibliography fixes, or paper publication lookups.",
+      "description": "Verify and format source-backed BibTeX with Paperstack. Use for citations, bibliography fixes, and publication lookups.",
       "source": "./",
       "strict": false,
       "skills": [
-        "./.claude/skills/fetch-bib"
+        "./skills/fetch-bib"
       ]
     }
   ]
