@@ -153,9 +153,7 @@ The index is optional. Without it, Paperstack can use online DBLP lookup. An ind
 
 **Tier 3 — Fallback.** Use Crossref or OpenReview only after exhausting Tier 1 and Tier 2, and mark the entry `UNVERIFIED`.
 
-Paperstack directly exposes ACL Anthology, arXiv, DBLP, Crossref, and OpenReview records. For publishers it does not yet expose, such as PMLR, ACM, IEEE, or Springer, the skill may use the official publisher page. No publisher or database adapter is maintained in this repository.
-
-One entry uses one source. The skill may normalize formatting, remove excluded fields, or apply the configured venue style, but it does not combine author lists, titles, years, or venues from different records.
+Paperstack exposes ACL Anthology, arXiv, DBLP, Crossref, and OpenReview records. For unsupported publishers such as PMLR, ACM, IEEE, or Springer, the skill may use the official publisher export directly. Each entry still uses one source; no source adapter is maintained in this repository.
 
 ## Existing Claude Code installations
 

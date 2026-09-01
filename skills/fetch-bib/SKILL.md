@@ -1,11 +1,6 @@
 ---
 name: fetch-bib
-description: >
-  Generate accurate BibTeX entries from authoritative sources (DBLP, ACL Anthology, PMLR, CrossRef, arXiv).
-  Use this skill whenever the user needs a citation, BibTeX entry, bibliography fix, or wants to look up
-  where/whether a paper was published — even if they don't explicitly say "BibTeX." Triggers on: paper titles,
-  arXiv IDs, DOIs, DBLP keys, "cite this paper", "add to references", reference list verification, or any
-  academic citation task.
+description: Fetch and verify source-backed BibTeX for paper titles, abbreviations, arXiv IDs, DOIs, DBLP keys, and OpenReview IDs. Use for citation generation, publication lookups, bibliography edits, and reference verification.
 license: MIT
 compatibility: Requires paperstack-cli>=0.3.2, Python 3.11+, uv, and network access for uncached lookups.
 metadata:
@@ -33,18 +28,17 @@ Each principle exists because a specific class of citation error is common and h
 
 **Entry types follow publication status.** Conference or workshop paper → `@inproceedings`. Journal article → `@article`. Preprint → per `[arxiv].entry_type` in bibstyle.toml.
 
-**`bibstyle.toml` governs formatting.** When present in the working directory, it overrides all defaults for field selection, venue style, key format, and arxiv conventions. When absent, the defaults in the schema section below still apply.
+**`bibstyle.toml` governs formatting.** It controls field selection, venue style, key format, and arXiv conventions. If absent, create it with the defaults below or the user's custom settings before continuing.
 
 ## Tools
 
-Paperstack replaces the repository's former source wrappers and DBLP downloader. Always request structured output:
+Paperstack replaces the repository's former source wrappers and DBLP downloader. Always request structured output.
 
-```bash
-paperstack paper metadata <id> --json
-paperstack paper metadata <id> --source <source> --json
-paperstack paper search "<title>" --source <source> --json
-paperstack index dblp status --json
-```
+| Operation | Command | Use |
+|-----------|---------|-----|
+| Inspect an identifier | `paperstack paper metadata <id> [--source <source>] --json` | Retrieve source records for a known work |
+| Search a source | `paperstack paper search "<title>" --source <source> --json` | Find candidates and external IDs |
+| Check the DBLP index | `paperstack index dblp status --json` | Decide whether local indexed search is available |
 
 `metadata` accepts `arxiv:`, `doi:`, `dblp:`, and `openreview:`. Sources include `dblp`, `crossref`, `openreview`, `acl-anthology`, `arxiv`, and `semantic-scholar`. Search supports all except `acl-anthology`.
 
@@ -91,7 +85,7 @@ Log the paper title and collected IDs before moving on.
 
 Determine whether the paper is formally published (and where) or still a preprint. This distinction drives everything downstream — a published paper should be cited at its venue, not as an arXiv preprint.
 
-Check in order of authority:
+Check in this verification sequence:
 
 1. **DBLP through Paperstack** (installed index first when available, then online source) — if DBLP lists it under a venue, it's published there. Try title search, key lookup, and DOI. Published titles sometimes differ from arXiv titles, so try multiple approaches before concluding it's absent.
 2. **OpenReview through Paperstack** (`paperstack paper search "<exact title>" --source openreview --json`) — confirms acceptance decisions directly. Check the invitation or venue data to distinguish workshop from main track.
@@ -134,9 +128,11 @@ Try every source in tier order before falling back. A single failed method (e.g.
 
 CrossRef construction: `title` → title, `author[].family/given` → author, `container-title` → journal/booktitle, `published.date-parts` → year.
 
+If the selected record contains `bibtex`, normalize that entry. Otherwise construct the entry only from fields present in that structured record. Never fill missing fields from another record or from memory.
+
 ### 4. Format and output
 
-Apply formatting from `bibstyle.toml` (or defaults if absent — see schema below).
+Apply formatting from `bibstyle.toml`.
 
 Add a provenance comment showing exactly where the BibTeX came from. This lets the user (and future tools) trace each entry back to its source:
 
@@ -146,6 +142,8 @@ Add a provenance comment showing exactly where the BibTeX came from. This lets t
   ...
 }
 ```
+
+Use `via paperstack/<source>` for Paperstack records and `via publisher` for a direct official export. The URL must resolve to the record actually used.
 
 Tier 3 sources get an additional warning — the user should know this entry wasn't verified against an authoritative source:
 
@@ -165,12 +163,12 @@ Walk through every item before outputting. If anything fails, fix it and re-chec
 3. **Fields** — only those listed in `[fields]` for this entry type? Strip stray fields (editor, publisher, address) unless they're explicitly configured.
 4. **Key style** — matches `[key].style`? `lastname_year` → `he2016deep`, `lastname_venue_year` → `he_cvpr2016`, `acl` → ACL Anthology ID.
 5. **Single source** — every field from exactly one source? No mixing.
-6. **Source line** — `% source:` matches the actual BibTeX source? Tier 3 has `⚠ UNVERIFIED`?
+6. **Source line** — stable ID, retrieval path, and URL match the actual record? Tier 3 has `⚠ UNVERIFIED`?
 7. **Honest representation** — preprint not cited as published? Workshop has "Workshop" in booktitle?
 
 ## `bibstyle.toml` schema
 
-Controls all formatting. When present, overrides defaults. When absent, these defaults still apply — a missing file does not mean "no formatting rules."
+Controls all formatting. Create this file before citation work; use these values when the user chooses the defaults.
 
 ```toml
 [fields]
