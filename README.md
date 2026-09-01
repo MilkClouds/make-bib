@@ -11,8 +11,6 @@ It never invents missing metadata. Ambiguous works, conflicting venues, and work
 
 ## Recorded examples
 
-These demos were recorded with Claude Code before the 2.0 Paperstack migration. They remain useful evidence of the citation errors fetch-bib is designed to catch and the user-facing behavior the universal skill preserves; their terminal commands are historical rather than current installation instructions.
-
 **Published version resolution.** A naive lookup may return the 2023 arXiv preprint for StreamingLLM. fetch-bib resolves the ICLR 2024 publication:
 
 <p align="center">
@@ -163,20 +161,11 @@ New installations should use `npx skills`. The old bundled DBLP downloader and f
 
 ## Development
 
-Validate the skill against the reference implementation:
-
 ```bash
 uvx --from git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref \
   skills-ref validate skills/fetch-bib
-```
-
-Check local discovery:
-
-```bash
 npx skills add . --list
 ```
-
-CI also performs a clean universal installation through `npx skills`.
 
 ## License
 
